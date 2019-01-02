@@ -2258,6 +2258,7 @@ lolFengzhan = sgs.CreateTriggerSkill{
 			return false
 		end
 		if judge.reason == "Diaup" and judge:isGood() then
+		--击飞效果是一个reson为"Diaup"的判定，判定成功则视为判定角色被击飞
 			if me:askForSkillInvoke(self:objectName(),data) then
 				room:broadcastSkillInvoke("lolFengzhan")
 				me:sepak("痛里牙个痛")
