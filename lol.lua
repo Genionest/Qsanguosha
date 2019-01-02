@@ -3,7 +3,14 @@ module("extensions.lol",package.seeall)
 extension = sgs.Package("lol")
 
 --------------------通用技能栏-----------------------
+--以下技能有些是为了方便测试而添加的，有些武将的技能触发条件有些苛刻，用这些技能可以方便达成条件，有些技能则是为了减少重复的工作
 
+--你只需为武将添加这个函数返回的技能，游戏开始时他就会为你的武将返回一个Rmark所代表的标记
+--ex：lolWujinagR = Rset("#lolWujiangR","@WujiangR")
+--    Wujiang:addSkill(lolWujiangR)
+-- 游戏开始时，Wujiang这个武将就会获得一枚"@WujiangR"标记，以下的其他函数同理
+--（字符串）Rname 技能的name属性,
+--（字符串）Rmark 游戏开始时要添加的mark
 Rset = function(Rname,Rmark)
 	lolR = sgs.CreateTriggerSkill{
 		name = "#"..Rname,	
@@ -18,6 +25,8 @@ Rset = function(Rname,Rmark)
 	return lolR
 end
 
+--能添加护盾的武将需要添加这个隐藏技能，
+--这个技能会为有"@Dun"标记的武将抵消伤害，是作用于所有角色的，也就是说你可以给其他武将添加"@Dun"标记
 lolHuDun = sgs.CreateTriggerSkill{
 	name = "#lolHuDun",	
 	frequeny = sgs.Skill_Frequent, 
@@ -43,6 +52,8 @@ lolHuDun = sgs.CreateTriggerSkill{
 	end
 }
 
+--能添加魔法护盾的武将需要添加这个隐藏技能
+--这个技能会为有"@Dun"标记的武将抵消【杀】以外的伤害，是作用于所有角色的，也就是说你可以给其他武将添加"@MoDun"标记
 lolMoDun = sgs.CreateTriggerSkill{
 	name = "#lolMoDun",	
 	frequeny = sgs.Skill_NotFrequent, 
@@ -71,6 +82,8 @@ lolMoDun = sgs.CreateTriggerSkill{
 	end
 }
 
+--自动清除标记，你只需要给武将添加一个这个函数返回的技能，然后武将每个回合结束就会自动清除time所代表的标记
+--（字符串）time 标记的名字，比如“@mark”，“flag”等等
 timeEnd = function(time)
 
 	local lolTime = sgs.CreateTriggerSkill{
@@ -90,6 +103,8 @@ timeEnd = function(time)
 	return lolTime
 end
 
+--自动清除标记，你只需要给武将添加一个这个函数返回的技能，然后武将每个回合开始就会自动清除time所代表的标记
+--（字符串）time 标记的名字，比如“@mark”，“flag”等等
 timeStar = function(time)
 
 	local lolTime = sgs.CreateTriggerSkill{
@@ -109,6 +124,7 @@ timeStar = function(time)
 	return lolTime
 end
 
+--穿甲，拥有这个技能，你的【杀】会无视防具
 lolChuanJia = sgs.CreateTriggerSkill{
 	name = "#lolChuanJia",	
 	frequeny = sgs.Skill_Frequent, 
@@ -137,6 +153,7 @@ lolChuanJia = sgs.CreateTriggerSkill{
 	end,	
 }
 
+--技能卡
 lolGiveArmorCard = sgs.CreateSkillCard{
 	name = "lolGeiJia",	
 	target_fixed = false,	 
@@ -156,6 +173,7 @@ lolGiveArmorCard = sgs.CreateSkillCard{
 	end,
 }
 
+--给盾，可以把你装备的防具给一名角色装上，如果这个角色没装备防具的话
 lolGiveArmor = sgs.CreateViewAsSkill{
 	name = "lolGiveArmor",
 	--relate_to_place = deputy,	
@@ -171,6 +189,7 @@ lolGiveArmor = sgs.CreateViewAsSkill{
 	end,		
 }
 
+--摸牌，指定一名角色，让他摸一张牌
 lolDraw = sgs.CreateTriggerSkill{
 	name = "lolDraw",	
 	frequeny = sgs.Skill_Frequent, 
@@ -186,6 +205,7 @@ lolDraw = sgs.CreateTriggerSkill{
 	end,	
 }
 
+--
 lolCardUseReason = sgs.CreateTriggerSkill{
 	name = "lolHah",	
 	frequeny = sgs.Skill_Frequent, 
@@ -214,6 +234,7 @@ lolCardUseReason = sgs.CreateTriggerSkill{
 		end	
 }
 
+--
 lolRecoverCard = sgs.CreateSkillCard{
 	name = "lolRecoverCard",	
 	target_fixed = false,	 
@@ -233,6 +254,7 @@ lolRecoverCard = sgs.CreateSkillCard{
 	end,
 }
 
+--恢复，指定一名角色，令其回复1点体力
 lolRecover = sgs.CreateViewAsSkill{
 	name = "lolRecover",
 	--relate_to_place = deputy,	
@@ -245,6 +267,7 @@ lolRecover = sgs.CreateViewAsSkill{
 	end,		
 }
 
+--
 lolDamageCard = sgs.CreateSkillCard{
 	name = "lolDamageCard",	
 	target_fixed = false,	 
@@ -265,6 +288,7 @@ lolDamageCard = sgs.CreateSkillCard{
 	end,	
 }
 
+--伤害，对一名角色造成1点伤害
 lolDamage = sgs.CreateViewAsSkill{
 	name = "lolDamage",	
 	n = 0,
@@ -275,6 +299,7 @@ lolDamage = sgs.CreateViewAsSkill{
 	end,		
 }
 
+--暴击，如果你的武将有这个技能，那么他的【杀】，如果有"Baoji"这个flag，那么这张【杀】造车的伤害将+1
 lolBaoJi = sgs.CreateTriggerSkill{
 	name = "#lolBaoJi",	
 	frequeny = sgs.Skill_Compulsory, 
@@ -293,6 +318,7 @@ lolBaoJi = sgs.CreateTriggerSkill{
 	end,	
 }
 
+--
 lolDizzy = sgs.CreateTriggerSkill{
 	name = "lolDizzy",	
 	frequeny = sgs.Skill_Compulsory, 
@@ -304,16 +330,10 @@ lolDizzy = sgs.CreateTriggerSkill{
 		end
 		if player:getPhase() == sgs.Player_Start then
 			local room = player:getRoom()
-			player:speak("2")
 			room:setPlayerMark(player,"TouYun",0)
-			player:speak("3")
 			if player:containsTrick("indulgence") then
 				return false
 			end
-			local card = sgs.Sanguosha:cloneCard("indulgence",sgs.Card_NoSuit,0)
-			player:speak("7")
-			
-			player:speak("8")
 		end
 	end,	
 	can_trigger = function(self,target)
@@ -321,6 +341,7 @@ lolDizzy = sgs.CreateTriggerSkill{
 	end
 }
 
+--致盲，可以致盲别人的武将需要添加这个技能，你只需要给其他角色添加一个"blind"标记，他下个回合就无法出杀
 lolBlind = sgs.CreateTriggerSkill{
 	name = "lolBlind",	
 	frequeny = sgs.Skill_Compulsory, 
@@ -332,9 +353,13 @@ lolBlind = sgs.CreateTriggerSkill{
 			room:setPlayerMark(player,"blind",0)
 			room:setCardLimitation("use","slash|.|.|.",true)
 		end
-	end,	
+	end,
+	can_trigger = function(self,target)
+		return target
+	end
 }	
 
+--
 lolThrowCard = sgs.CreateSkillCard{
 	name = "lolThrowCard",	
 	target_fixed = false,	 
@@ -351,6 +376,7 @@ lolThrowCard = sgs.CreateSkillCard{
 	end,
 }
 
+--弃牌，你可弃置一名角色一张牌
 lolThrow = sgs.CreateZeroCardViewAsSkill{
 	name = "lolThrow",
 	view_as = function(self)
