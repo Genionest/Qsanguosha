@@ -5,29 +5,6 @@ extension = sgs.Package("fate")
 -------------------------全局---------------------------------
 Anjiang = sgs.General(extension,"anjiang","god",4,true,true,true)
 
--- --祭品效果
--- oblation = function(room,player,tp)
--- 	local obL = 0
--- 	if tp == 2 then
--- 		obL = 4
--- 	elseif tp == 3 then
--- 		obL = 6
--- 	elseif tp == 1 then
--- 		obL = 2
--- 	end
--- 	local count =0
--- 	while(count<obL and not player:isNude()) do
--- 		local id = room:askForCardChosen(player,player,"he","oblation")
--- 		local card = sgs.Sanguosha:getCard(id)
--- 		if card:isKindOf("EquipCard") then
--- 			count = count+2
--- 		else
--- 			count = count+1
--- 		end
--- 		room:throwCard(card,player)
--- 	end
--- end
-
 --请先看lol拓展包
 Rset = function(Rname,Rmark)
 	lolR = sgs.CreateTriggerSkill{
