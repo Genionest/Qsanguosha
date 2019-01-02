@@ -5,6 +5,10 @@ extension = sgs.Package("duelKing")
 -------------------------全局---------------------------------
 Anjiang = sgs.General(extension,"anjiang","god",4,true,true,true)
 
+--祭品效果，tp为祭品组数，一组祭品就是两张牌或一张装备牌，需要几组祭品就弃置几回
+--(Room对象)room player:getRoom()的那个
+--(ServerPlayer对象)player 就是平实的那个player
+--(数字)tp 需要弃置的祭品组数
 oblation = function(room,player,tp)
 	local obL = 0
 	if tp == 2 then
