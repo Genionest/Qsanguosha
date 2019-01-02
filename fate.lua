@@ -28,6 +28,7 @@ Anjiang = sgs.General(extension,"anjiang","god",4,true,true,true)
 -- 	end
 -- end
 
+--请先看lol拓展包
 Rset = function(Rname,Rmark)
 	lolR = sgs.CreateTriggerSkill{
 		name = "#"..Rname,	
@@ -42,6 +43,8 @@ Rset = function(Rname,Rmark)
 	return lolR
 end
 
+--返回获取宝具的技能卡
+--(字符串)baoju 这个字符串必须是BaoJu列表中的一个元素，它对应着那张牌的id
 getBaojuCard = function(baoju)
 	zaigetcard = sgs.CreateSkillCard{
 		name = "zai"..baoju.."Card",	
@@ -55,6 +58,9 @@ getBaojuCard = function(baoju)
 	return zaigetcard
 end
 
+--函数返回获取宝具的视为技，需要配合上面的返回获得宝具技能卡使用
+--(字符串)baoju 和上述一样的一样，
+--(技能卡对象)baojucard 这个技能卡就是要视为的技能卡
 getBaoju = function(baoju,baojucard)
 	zaiGet = sgs.CreateZeroCardViewAsSkill{
 		name = "zai"..baoju,
@@ -72,6 +78,7 @@ end
 
 -------------------------全局---------------------------------
 
+--宝具列表的生成
 BaoName = {"Excalibur","GaeBolg","Enuma","Enkidu","Durandal","Dainslef","Gram","Caladbolg","Vajra","Harpe"}
 BaoJu = {}
 bao_count = 278
@@ -808,8 +815,6 @@ end
 
 sgs.LoadTranslationTable{
 	["fate"] = "Fate包",
-
-	["cangjingkong"] = "苍井空",
 
 	["excalibur"] = "胜利与誓约之剑",
 	[":excalibur"] = "装备牌·武器<br />攻击范围：2<br />武器特效：你造成伤害时，摸一张牌。",
