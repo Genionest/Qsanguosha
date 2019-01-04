@@ -1,17 +1,25 @@
 module("extensions.lol",package.seeall)
 
-extension = sgs.Package("lol")
-
---------------------通用技能栏-----------------------
---以下技能有些是为了方便测试而添加的，有些武将的技能触发条件有些苛刻，用这些技能可以方便达成条件，有些技能则是为了减少重复的工作
+--------------------------------------------------------------------------------
+--移出字符串首位的@
+--	(string)name, 需要进行修改的字符串
+removeAt = function(name)
+	if name:find("@") then
+		name = string.sub(name,2,-1)
+	else
+		name = name
+	end
+	return name
+end
 
 --你只需为武将添加这个函数返回的技能，游戏开始时他就会为你的武将返回一个Rmark所代表的标记
---ex：lolWujinagR = Rset("#lolWujiangR","@WujiangR")
+--ex：lolWujinagR = getRMark("@WujiangR")
 --    Wujiang:addSkill(lolWujiangR)
 -- 游戏开始时，Wujiang这个武将就会获得一枚"@WujiangR"标记，以下的其他函数同理
---（字符串）Rname 技能的name属性,
---（字符串）Rmark 游戏开始时要添加的mark
-Rset = function(Rname,Rmark)
+
+--	(string)Rmark 游戏开始时要添加的mark
+getRMark = function(Rmark)
+	local Rname = removeAt(Rmark)
 	lolR = sgs.CreateTriggerSkill{
 		name = "#"..Rname,	
 		frequeny = sgs.Skill_Frequent, 
@@ -24,6 +32,270 @@ Rset = function(Rname,Rmark)
 	}
 	return lolR
 end
+
+--返回两个技能，
+--技能1：使用【杀】，获得mark标记，并且将markClear标记设置为0，并添加mark(无@) flag
+--技能2：回合内你没有使用【杀】，你获得一枚markClear标记，如果markClear标记大于round
+--		 失去一枚mark标记，并将markClear标记设为round-1，如果你有mark(无@) flag，你不会
+--		 获得markClear标记
+--	(string)mark, 使用【杀】获得的标记
+--	(int)round, 连续不适用【杀】多少回合后，会失去标记
+--	(int)max, 标记数量的上限
+SlashedMarkPassive = function(mark,round,max)
+	--清除mark的@
+	local Name = removeAt(mark)
+	--创建用杀得标记技能
+	useSlashGetMark =  sgs.CreateTriggerSkill{
+		name = "#loluseSlashGet"..Name,	
+		frequeny = sgs.Skill_Compulsory, 
+		events = {sgs.CardUsed},
+		on_trigger = function(self,event,player,data)
+			local room = player:getRoom()
+			local use = data:toCardUse()
+			--你使用了【杀】获得标记，设已用【杀】flag，且清楚标记为0
+			if use.from:objectName() == player:objectName() then
+				if use.card:isKindOf("Slash") then 
+					room:setPlayerMark(player,Name.."Clear",0)
+					room:setPlayerFlag(player,Name)
+					if player:getMark(mark) < max then
+						player:gainMark(mark)
+					end
+				end
+			end	
+		end,	
+	}
+	--创建连续不用杀失去标记技能
+	noUseSlashLostMark = sgs.CreateTriggerSkill{
+		name = "#noUseSlashLost"..Name,	
+		frequeny = sgs.Skill_Compulsory, 
+		events = {sgs.EventPhaseEnd},
+		on_trigger = function(self,event,player,data)
+			local room = player:getRoom()
+			if player:getPhase() == sgs.Player_Finish then
+				if player:hasFlag(Name) then --已经用了【杀】就不能继续
+					return false
+				end
+				room:addPlayerMark(player,Name.."Clear")
+				if player:getMark(Name.."Clear") >= round then --没有使用杀的连续回合超过限制
+					if player:getMark(mark) > 0 then
+						player:loseMark(mark)
+					end
+					room:setPlayerMark(player,Name.."Clear",round-1) --标记数变为界限-1
+				end
+			end
+		end,	
+	}
+	--返回
+	return useSlashGetMark,noUseSlashLostMark
+end
+
+--自动清除标记，你只需要给武将添加一个这个函数返回的技能，然后武将每个回合结束就会自动清除time所代表的标记
+--	(string）mark 标记的名字，比如“@mark”，“flag”等等
+endRemoveMark = function(mark)
+	local Name = removeAt(mark)
+	local lolMark = sgs.CreateTriggerSkill{
+		name = "#"..Name,	
+		frequeny = sgs.Skill_Compulsory, 
+		events = {sgs.EventPhaseEnd},
+		--view_as_skill = ,
+		on_trigger = function(self,event,player,data)
+			local room = player:getRoom()
+			if player:getPhase() == sgs.Player_Finish then
+				if player:getMark(mark)>0 then
+					player:loseMark(mark)
+				end
+			end
+		end,	
+	}
+	return lolMark
+end
+
+--自动清除标记，你只需要给武将添加一个这个函数返回的技能，然后武将每个回合开始就会自动清除time所代表的标记
+--	(string）mark 标记的名字，比如“@mark”，“flag”等等
+startRemoveMark = function(mark)
+	local Name = removeAt(mark)
+	local lolMark = sgs.CreateTriggerSkill{
+		name = "#"..Name,	
+		frequeny = sgs.Skill_Compulsory, 
+		events = {sgs.EventPhaseStart},
+		--view_as_skill = ,
+		on_trigger = function(self,event,player,data)
+			local room = player:getRoom()
+			if player:getPhase() == sgs.Player_Start then
+				if player:getMark(mark)>0 then
+					player:loseMark(mark)
+				end
+			end
+		end,	
+	}
+	return lolMark
+end
+
+ZeroVS = function(skillcard)
+	vsSkill = sgs.CreateZeroCardViewAsSkill{
+		name = skillcard:objectName(),	
+		view_as = function(self)
+			local vs = skillcard:clone()
+			vs:setSkillName(self:objectName())
+			return vs
+		end,	
+	}
+	return vsSkill
+end
+
+--以下技能有些是为了方便测试而添加的，有些武将的技能触发条件有些苛刻，用这些技能可以方便达成条件，
+GMlist = {"lolGiveArmor","lolThrow","lolDraw","lolRecover","lolDamage"}
+
+--GM，让你的武将拥有GM之力
+lolGM = sgs.CreateGameStartSkill{
+	name = "#lolGM",
+	frequeny = sgs.Skill_Compulsory,
+	on_gamestart = function(self,player)
+		local room = player:getRoom()
+		for _,skill in ipairs(GMlist) do
+			room:acquireSkill(player,skill)
+		end
+	end,
+}
+
+--给装备，类似二张直谏，不过不摸牌
+lolGiveArmorCard = sgs.CreateSkillCard{
+	name = "lolGiveArmor",
+	will_throw = false,
+	filter = function(self, targets, to_select, player)
+		if #targets ~= 0 or to_select:objectName() == player:objectName() then return false end
+		local card = sgs.Sanguosha:getCard(self:getSubcards():first())
+		local equip = card:getRealCard():toEquipCard()
+		local equip_index = equip:location()
+		return to_select:getEquip(equip_index) == nil
+	end,
+	on_effect = function(self, effect)
+		local player = effect.from
+		player:getRoom():moveCardTo(self, player, effect.to, sgs.Player_PlaceEquip,sgs.CardMoveReason(sgs.CardMoveReason_S_REASON_PUT, player:objectName(), "lolGiveArmor", ""))
+	end
+}
+
+lolGiveArmor = sgs.CreateOneCardViewAsSkill{
+	name = "lolGiveArmor",	
+	filter_pattern = "EquipCard|.|.|.",
+	view_as = function(self, card)
+		local vs_card = lolGiveArmorCard:clone()
+		vs_card:addSubcard(card)
+		vs_card:setSkillName(self:objectName())
+		return vs_card
+	end
+}
+
+--
+lolRecoverCard = sgs.CreateSkillCard{
+	name = "lolRecover",	
+	target_fixed = false,	 
+	will_throw = false,
+	--handling_method = sgs.Card_MethodNone,
+	filter = function(self,targets,to_select,player)
+		if #targets == 0 then
+			return to_select:isWounded()
+		end
+	end,
+	on_use = function(self,room,source,targets)		
+		local recover = sgs.RecoverStruct()
+		local target = targets[1]
+		recover.who = source
+		recover.recover = 1
+		room:recover(target,recover)
+	end,
+}
+
+--恢复，指定一名角色，令其回复1点体力
+lolRecover = ZeroVS(lolRecoverCard)
+
+--
+lolDamageCard = sgs.CreateSkillCard{
+	name = "lolDamage",	
+	target_fixed = false,	 
+	will_throw = false,
+	--handling_method = sgs.Card_MethodNone,
+	filter = function(self,targets,to_select,player)
+		if #targets == 0 then
+			return true
+		end
+	end,
+	on_use = function(self,room,source,targets)		
+		local target = targets[1]
+		local damage = sgs.DamageStruct()
+		damage.from = source
+		damage.to = target
+		damage.damage = 1
+		room:damage(damage)
+	end,
+}
+
+--伤害，对一名角色造成1点伤害
+lolDamage = ZeroVS(lolDamageCard)
+
+--摸牌，指定一名角色，让他摸一张牌
+lolDrawCard = sgs.CreateSkillCard{
+	name = "lolDraw",	
+	target_fixed = false,	 
+	will_throw = false,
+	on_use = function(self,room,source,targets)		
+		targets[1]:drawCards(1)
+	end,
+}
+
+lolDraw = ZeroVS(lolDrawCard)
+
+--
+lolThrowCard = sgs.CreateSkillCard{
+	name = "lolThrow",	
+	target_fixed = false,	 
+	will_throw = false,
+	handling_method = sgs.Card_MethodNone,
+	filter = function(self,targets,to_select,player)
+		if #targets == 0 then
+			return not to_select:isKongcheng()
+		end
+	end,
+	on_use = function(self,room,source,targets)		
+		local target = targets[1]
+		room:askForDiscard(target,self:objectName(),1,1)
+	end,
+}
+
+--弃牌，你可弃置一名角色一张牌
+lolThrow =	ZeroVS(lolThrowCard)
+
+--
+-- lolCardUseReason = sgs.CreateTriggerSkill{
+-- 	name = "lolHah",	
+-- 	frequeny = sgs.Skill_Frequent, 
+-- 	events = {sgs.CardUsed,sgs.CardResponded},
+-- 	--view_as_skill = ,
+-- 	on_trigger = function(self,event,player,data)
+-- 		local room = player:getRoom()
+-- 		if event == sgs.CardResponded then
+-- 			local response = data:toCardResponse()
+-- 			if response.m_who then
+-- 				response.m_who:gainMark("@card1")
+-- 			end
+-- 			if response.m_isUse then
+-- 				player:gainMark("@card2")
+-- 			end
+-- 			if response.m_isRetrial then
+-- 				player:gainMark("@card3")
+-- 			end
+-- 			if response.m_isHandcard then
+-- 				player:gainMark("@card4")
+-- 			end
+-- 		end
+-- 	end,
+-- 	can_trigger = function(self,target)
+-- 			return target
+-- 		end	
+-- }
+
+---------------------------------------------------------------------------------------
+--特殊效果技能，需要这些效果的武将直接添加，免得再写
 
 --能添加护盾的武将需要添加这个隐藏技能，
 --这个技能会为有"@Dun"标记的武将抵消伤害，是作用于所有角色的，也就是说你可以给其他武将添加"@Dun"标记
@@ -82,47 +354,6 @@ lolMoDun = sgs.CreateTriggerSkill{
 	end
 }
 
---自动清除标记，你只需要给武将添加一个这个函数返回的技能，然后武将每个回合结束就会自动清除time所代表的标记
---（字符串）time 标记的名字，比如“@mark”，“flag”等等
-timeEnd = function(time)
-
-	local lolTime = sgs.CreateTriggerSkill{
-		name = "#"..time,	
-		frequeny = sgs.Skill_Compulsory, 
-		events = {sgs.EventPhaseEnd},
-		--view_as_skill = ,
-		on_trigger = function(self,event,player,data)
-			local room = player:getRoom()
-			if player:getPhase() == sgs.Player_Finish then
-				if player:getMark(time)>0 then
-					player:loseMark(time)
-				end
-			end
-		end,	
-	}
-	return lolTime
-end
-
---自动清除标记，你只需要给武将添加一个这个函数返回的技能，然后武将每个回合开始就会自动清除time所代表的标记
---（字符串）time 标记的名字，比如“@mark”，“flag”等等
-timeStar = function(time)
-
-	local lolTime = sgs.CreateTriggerSkill{
-		name = "#"..time,	
-		frequeny = sgs.Skill_Compulsory, 
-		events = {sgs.EventPhaseStart},
-		--view_as_skill = ,
-		on_trigger = function(self,event,player,data)
-			local room = player:getRoom()
-			if player:getPhase() == sgs.Player_Start then
-				if player:getMark(time)>0 then
-					player:loseMark(time)
-				end
-			end
-		end,	
-	}
-	return lolTime
-end
 
 --穿甲，拥有这个技能，你的【杀】会无视防具
 lolChuanJia = sgs.CreateTriggerSkill{
@@ -153,152 +384,6 @@ lolChuanJia = sgs.CreateTriggerSkill{
 	end,	
 }
 
---技能卡
-lolGiveArmorCard = sgs.CreateSkillCard{
-	name = "lolGeiJia",	
-	target_fixed = false,	 
-	will_throw = false,
-	handling_method = sgs.Card_MethodNone,
-	filter = function(self,targets,to_select,player)
-		if #targets == 0 then
-			return to_select:getArmor() == nil
-		end
-	end,
-	on_use = function(self,room,source,targets)		
-		local armor = source:getArmor()
-		local target = targets[1]
-		if armor then
-			room:moveCardTo(armor,target,sgs.Player_PlaceEquip)
-		end
-	end,
-}
-
---给盾，可以把你装备的防具给一名角色装上，如果这个角色没装备防具的话
-lolGiveArmor = sgs.CreateViewAsSkill{
-	name = "lolGiveArmor",
-	--relate_to_place = deputy,	
-	--response_pattern = "",
-	n = 0,
-	view_as = function(self,cards)
-		local vs_card = lolGiveArmorCard:clone()
-		vs_card:setSkillName(self:objectName())
-		return vs_card
-	end,
-	enabled_at_play = function(self,player)
-		return player:getArmor()
-	end,		
-}
-
---摸牌，指定一名角色，让他摸一张牌
-lolDraw = sgs.CreateTriggerSkill{
-	name = "lolDraw",	
-	frequeny = sgs.Skill_Frequent, 
-	events = {sgs.EventPhaseStart},
-	--view_as_skill = ,
-	on_trigger = function(self,event,player,data)
-		local room = player:getRoom()
-		if player:getMark("loldrawTime") == 0 then
-			player:gainMark("loldrawTime",2)
-			player:drawCards(1)
-			room:setPlayerFlag(player,self:objectName())
-		end
-	end,	
-}
-
---
-lolCardUseReason = sgs.CreateTriggerSkill{
-	name = "lolHah",	
-	frequeny = sgs.Skill_Frequent, 
-	events = {sgs.CardUsed,sgs.CardResponded},
-	--view_as_skill = ,
-	on_trigger = function(self,event,player,data)
-		local room = player:getRoom()
-		if event == sgs.CardResponded then
-			local response = data:toCardResponse()
-			if response.m_who then
-				response.m_who:gainMark("@card1")
-			end
-			if response.m_isUse then
-				player:gainMark("@card2")
-			end
-			if response.m_isRetrial then
-				player:gainMark("@card3")
-			end
-			if response.m_isHandcard then
-				player:gainMark("@card4")
-			end
-		end
-	end,
-	can_trigger = function(self,target)
-			return target
-		end	
-}
-
---
-lolRecoverCard = sgs.CreateSkillCard{
-	name = "lolRecoverCard",	
-	target_fixed = false,	 
-	will_throw = false,
-	--handling_method = sgs.Card_MethodNone,
-	filter = function(self,targets,to_select,player)
-		if #targets == 0 then
-			return to_select:isWounded()
-		end
-	end,
-	on_use = function(self,room,source,targets)		
-		local recover = sgs.RecoverStruct()
-		local target = targets[1]
-		recover.who = source
-		recover.recover = 1
-		room:recover(target,recover)
-	end,
-}
-
---恢复，指定一名角色，令其回复1点体力
-lolRecover = sgs.CreateViewAsSkill{
-	name = "lolRecover",
-	--relate_to_place = deputy,	
-	--response_pattern = "",
-	n = 0,
-	view_as = function(self,cards)
-		local vs_card = lolRecoverCard:clone()
-		vs_card:setSkillName(self:objectName())
-		return vs_card
-	end,		
-}
-
---
-lolDamageCard = sgs.CreateSkillCard{
-	name = "lolDamageCard",	
-	target_fixed = false,	 
-	will_throw = false,
-	--handling_method = sgs.Card_MethodNone,
-	filter = function(self,targets,to_select,player)
-		if #targets == 0 then
-			return true
-		end
-	end,
-	on_use = function(self,room,source,targets)		
-		local target = targets[1]
-		local damage = sgs.DamageStruct()
-		damage.from = source
-		damage.to = target
-		damage.damage = 1
-		room:damage(damage)
-	end,	
-}
-
---伤害，对一名角色造成1点伤害
-lolDamage = sgs.CreateViewAsSkill{
-	name = "lolDamage",	
-	n = 0,
-	view_as = function(self,cards)
-		local vs_card = lolDamageCard:clone()
-		vs_card:setSkillName(self:objectName())
-		return vs_card
-	end,		
-}
-
 --暴击，如果你的武将有这个技能，那么他的【杀】，如果有"Baoji"这个flag，那么这张【杀】造车的伤害将+1
 lolBaoJi = sgs.CreateTriggerSkill{
 	name = "#lolBaoJi",	
@@ -320,20 +405,42 @@ lolBaoJi = sgs.CreateTriggerSkill{
 
 --
 lolDizzy = sgs.CreateTriggerSkill{
-	name = "lolDizzy",	
+	name = "#lolDizzy",	
 	frequeny = sgs.Skill_Compulsory, 
-	events = {sgs.EventPhaseStart},
-	--view_as_skill = ,
+	events = {sgs.EventPhaseEnd},
 	on_trigger = function(self,event,player,data)
-		if player:getMark("TouYun") == 0 then
+		local room = player:getRoom()
+		--有眩晕标记
+		if player:getMark("@XuanYun") == 0 then
 			return false
 		end
-		if player:getPhase() == sgs.Player_Start then
-			local room = player:getRoom()
-			room:setPlayerMark(player,"TouYun",0)
-			if player:containsTrick("indulgence") then
-				return false
+		if player:getPhase() == sgs.Player_Judge then
+			if not player:isSkipped(sgs.Player_Play) then
+				player:skip(sgs.Player_Play)
 			end
+			room:setPlayerMark(player,"@XuanYun",0)
+		end
+	end,	
+	can_trigger = function(self,target)
+		return target
+	end
+}
+
+lolImprison = sgs.CreateTriggerSkill{
+	name = "#lolImprison",	
+	frequeny = sgs.Skill_Compulsory, 
+	events = {sgs.EventPhaseEnd},
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		--有禁锢标记
+		if player:getMark("@JinGu") == 0 then
+			return false
+		end
+		if player:getPhase() == sgs.Player_Judge then
+			if not player:isSkipped(sgs.Player_Draw) then
+				player:skip(sgs.Player_Draw)
+			end
+			room:setPlayerMark(player,"@JinGu",0)
 		end
 	end,	
 	can_trigger = function(self,target)
@@ -359,31 +466,6 @@ lolBlind = sgs.CreateTriggerSkill{
 	end
 }	
 
---
-lolThrowCard = sgs.CreateSkillCard{
-	name = "lolThrowCard",	
-	target_fixed = false,	 
-	will_throw = false,
-	handling_method = sgs.Card_MethodNone,
-	filter = function(self,targets,to_select,player)
-		if #targets == 0 then
-			return not to_select:isKongcheng()
-		end
-	end,
-	on_use = function(self,room,source,targets)		
-		local target = targets[1]
-		room:askForDiscard(target,self:objectName(),1,1)
-	end,
-}
-
---弃牌，你可弃置一名角色一张牌
-lolThrow = sgs.CreateZeroCardViewAsSkill{
-	name = "lolThrow",
-	view_as = function(self)
-		return lolThrowCard:clone()
-	end,	
-}
-
 --------------------通用技能栏-------------------------
 
 --暗降
@@ -391,87 +473,15 @@ Anjiang = sgs.General(extension,"anjiang","god",4,true,true,true)
 
 --------------------通用技添加区-----------------------
 
--- Anjiang:addSkill(lolTime)
-Anjiang:addSkill(lolThrow)
-Anjiang:addSkill(lolDizzy)
-Anjiang:addSkill(lolHuDun)
-Anjiang:addSkill(lolMoDun)
 Anjiang:addSkill(lolChuanJia)
 Anjiang:addSkill(lolGiveArmor)
 Anjiang:addSkill(lolDraw)
-Anjiang:addSkill(lolCardUseReason)
+Anjiang:addSkill(lolThrow)
 Anjiang:addSkill(lolDamage)
-Anjiang:addSkill(lolBaoJi)
+Anjiang:addSkill(lolRecover)
 
 --------------------通用技添加区-----------------------
 
---盖伦
--- Garen = sgs.General(extension,"Garen","shu",4)
-
--- lolJianren = sgs.CreateTriggerSkill{
--- 	name = "lolJianren" ,
--- 	events = {sgs.DrawNCards}, --摸牌阶段
--- 	on_trigger = function(self, event, player, data)
--- 		local room = player:getRoom()
--- 		if player:isWounded() then --如果受伤
--- 			--不是很懂为什么要搞个invoked出来
--- 			local invoked = false
--- 			--return false 应该是不能触发的意思
--- 			if player:isSkipped(sgs.Player_Draw) then return false end  --没有跳过摸牌阶段
--- 			invoked = player:askForSkillInvoke(self:objectName())
--- 			if invoked then
--- 				room:broadcastSkillInvoke(self:objectName()) -- 技能音效
--- 				data:setValue(1) --只摸一张牌
--- 				local recover = sgs.RecoverStruct()
--- 				recover.who = player
--- 				room:recover(player,recover) --恢复一点体力
--- 			end
--- 		end
--- 	end
--- }
-
--- lolZhengyi = sgs.CreateTriggerSkill{
--- 	name = "lolZhengyi",	
--- 	frequeny = sgs.Skill_Limited, 
--- 	events = {sgs.Damaged},
--- 	--view_as_skill = ,
--- 	on_trigger = function(self,event,player,data)
--- 		local room = player:getRoom()
--- 		local damage = data:toDamage()
--- 		local victim = damage.to
--- 		local me = room:findPlayerBySkillName(self:objectName())
--- 		if victim:objectName() ~= me:objectName() and victim:getHp() == 1 
--- 			and me:getMark("@Justice")>0 then
--- 			ai_data = sgs.QVariant()
--- 			ai_data:setValue(victim)
--- 			if room:askForSkillInvoke(me,self:objectName(),ai_data) then
--- 				me:loseMark("@Justice")
--- 				local damage = sgs.DamageStruct()
--- 				damage.from = me
--- 				damage.to = victim
--- 				damage.damage = 1
--- 				room:damage(damage)
--- 			end
--- 		end
--- 	end,	
--- 	can_trigger = function(self,target)
--- 		return target
--- 	end
--- }
-
--- lolZhengyiPlus = sgs.CreateTriggerSkill{
--- 	name = "#lolZhengyiPlus",	
--- 	events = {sgs.GameStart},
--- 	--view_as_skill = ,
--- 	on_trigger = function(self,event,player,data)
--- 		player:gainMark("@Justice",1)
--- 	end,	
--- }
--- --成功喽！！！
-
--- Garen:addSkill(lolJianren)
--- Garen:addSkill(lolZhengyi)
--- Garen:addSkill(lolZhengyiPlus)
 --狗头
 Nasus = sgs.General(extension,"Nasus","shu",4)
 
@@ -553,9 +563,9 @@ lolSishen = sgs.CreateZeroCardViewAsSkill{
 	end,
 }
 
-lolSishenTime = timeStar("SishenTime")
+lolSishenTime = startRemoveMark("SishenTime")
 
-lolNasusR = Rset("#lolNasusR","@NasusR")
+lolNasusR = getRMark("@NasusR")
 
 Nasus:addSkill(lolJihun)
 Nasus:addSkill(lolSishen)
@@ -660,108 +670,14 @@ lolQidao = sgs.CreateTriggerSkill{
 
 Soroka:addSkill(lolJiushu)
 Soroka:addSkill(lolQidao)
---易大师
--- MasterYi = sgs.General(extension,"MasterYi","wei",3)
 
-LuaYingzi = sgs.CreateTriggerSkill{
-	name = "LuaYingzi",
-	frequency = sgs.Skill_Frequent,
-	events = {sgs.DrawNCards},
-	on_trigger = function(self, event, player, data)
-		local room = player:getRoom()
-		if room:askForSkillInvoke(player, "LuaYingzi", data) then
-			room:broadcastSkillInvoke(self:objectName())
-			local count = data:toInt() + 1
-			data:setValue(count)
-		end
-	end
-}
-
-Anjiang:addSkill(LuaYingzi)
-
--- lolWuji = sgs.CreateTriggerSkill{
--- 	name = "lolWuji",
--- 	frequency = sgs.Skill_Wake,
--- 	events = {sgs.EventPhaseStart}, -- 回合开始时
--- 	on_trigger = function(self,event,player,data)
--- 		local room = player:getRoom()
--- 		room:addPlayerMark(player,"Wuju") --添加标记
--- 		if room:changeMaxHpForAwakenSkill(player) then -- 觉醒技改变体力上限。顺便获得觉醒标记
--- 			room:broadcastSkillInvoke(self:objectName())
--- 			room:doSuperLightbox("MasterYi","lolWuji") -- 加特效“DUANG”
--- 			room:detachSkillFromPlayer(player,"lolMingxiang") -- 失去冥想
--- 			room:handleAcquireDetachSkills(player,"wusheng|paoxiao|LuaYingzi|mashu") -- 获得技能
--- 		end
--- 		return false
--- 	end,
--- 	can_trigger = function(self,target)
--- 		return (target and target:isAlive() and target:hasSkill(self:objectName()))
--- 				and (target:getMark("Wuju") == 0)
--- 				and (target:getPhase() == sgs.Player_Start)
--- 				and (target:getHp() == 1)
--- 	end
--- }
-
--- lolMingxiang = sgs.CreateTriggerSkill{
--- 	name = "lolMingxiang",
--- 	events = {sgs.EventPhaseStart},
--- 	on_trigger = function(self,event,player,data)
--- 		local room = player:getRoom()
--- 		if player:getPhase() == sgs.Player_Finish then -- 结束阶段开始时
--- 			if player:isWounded() then -- 如果你已受伤
--- 				if player:askForSkillInvoke(self:objectName(),data) then
--- 					room:broadcastSkillInvoke(self:objectName())
--- 					local recover = sgs.RecoverStruct() -- 恢复1血
--- 					recover.who = player
--- 					room:recover(player,recover)
--- 					player:turnOver() -- 翻面
--- 				end
--- 			end
--- 		end
--- 	end,
--- }
-
--- MasterYi:addSkill(lolWuji)
--- MasterYi:addSkill(lolMingxiang)
 --武器
 Jax = sgs.General(extension,"Jax","qun",4)
 
--- lolZongshi = sgs.CreateTriggerSkill{
--- 	name = "lolZongshi",
--- 	frequency = Skill_NotFrequent,
--- 	events = {sgs.CardUsed,sgs.SlashMissed}, -- 使用牌，杀被闪掉了
-
--- 	on_trigger = function(self, event, player, data)
--- 		local room = player:getRoom()
--- 		if event == sgs.CardUsed then
--- 			local use = data:toCardUse()
--- 			if use.card:isKindOf("Slash") then -- 如果用的是杀
--- 				if player:askForSkillInvoke(self:objectName(),data) then
--- 					room:broadcastSkillInvoke(self:objectName())
--- 					player:drawCards(1) --摸一张牌
--- 					--不计入出牌次数
--- 					room:addPlayerHistory(player, use.card:getClassName(),-1)
--- 				end
--- 			end
--- 		end
--- 		if event == sgs.SlashMissed then -- 如果被闪掉了
--- 			-- 不能用杀
--- 			room:setPlayerCardLimitation(player,"use","Slash|.|.|.|.",true)
--- 		end
--- 	end,
--- 	can_trigger =  function(self,target)
--- 		if target:hasSkill(self:objectName()) then
--- 			if target:isAlive() then
--- 				return target:getPhase() == sgs.Player_Play -- 出牌阶段才能用
--- 			end
--- 		end
--- 	end
--- }
-
-lolZongshi = sgs.CreateTriggerSkill{
-	name = "lolZongshi",	
+lolZongshiPassive= sgs.CreateTriggerSkill{
+	name = "#lolZongshiPassive",	
 	frequeny = sgs.Skill_Compulsory, 
-	events = {sgs.DamageCaused,sgs.EventPhaseStart},
+	events = {sgs.DamageCaused},
 	--view_as_skill = ,
 	on_trigger = function(self,event,player,data)
 		local room = player:getRoom()
@@ -771,11 +687,10 @@ lolZongshi = sgs.CreateTriggerSkill{
 			 damage.chain and not damage.transfer and damage.from:hasSkill(self:objectName()) then
 			 	room:broadcastSkillInvoke(self:objectName())
 				player:gainMark("zongshi")
+				if player:hasFlag("zongshi") then
+					player:drawCards(1)
 				player:drawCards(1)
-			end
-		elseif event == sgs.EventPhaseStart then
-			if player:getPhase() == sgs.Player_Finish then
-				room:setPlayerMark(player,"zongshi",0)
+				end
 			end
 		end
 	end,	
@@ -796,108 +711,47 @@ lolZongshiPuls = sgs.CreateTargetModSkill{
 	end,
 }
 
+lolJaxR = getRMark("JaxR")
+
+lolZongshiCard = sgs.CreateSkillCard{
+	name = "lolZongshiCard",	
+	target_fixed = true,	 
+	will_throw = false,
+	handling_method = sgs.Card_MethodNone,
+	filter = function(self,targets,to_select,player)
+		
+	end,
+	on_use = function(self,room,source,targets)		
+		room:setPlayerFlag(source,"zongshi")
+		room:setPlayerMark(source,"JaxR",0)
+	end,
+	on_effect = function(self,effect)
+		
+	end,	
+}
+
+lolZongshi = sgs.CreateZeroCardViewAsSkill{
+	name = "lolZongshi",
+	relate_to_place = deputy,	
+	response_pattern = "",		
+	view_as = function(self)
+		local vs = lolZongshiCard:clone()
+		vs:setSkillName(self:objectName())
+		return vs
+	end,
+	enabled_at_play = function(self,player)
+		return player:getMark("JaxR")>0
+	end,
+	enabled_at_response = function(self,player,pattern)
+		
+	end,		
+}
+
 Jax:addSkill(lolZongshi)
 Jax:addSkill(lolZongshiPuls)
---皇子
--- JarvanIV = sgs.General(extension,"JarvanIV$","shu",4)
+Jax:addSkill(lolZongshiPassive)
+Jax:addSkill(lolJaxR)
 
--- lolZhanqi = sgs.CreateTargetModSkill{
--- 	name = "lolZhanqi",
--- 	frequency = sgs.Skill_NotCompulsory,
--- 	residue_func = function(self,player)
--- 		if player:hasSkill(self:objectName()) then
--- 			return 1 -- 多用一张杀
--- 		else
--- 			return 0
--- 		end
--- 	end
--- }
-
--- lolZhanqiclear = sgs.CreateTriggerSkill{
--- 	name = "#lolZhanqiclear",
--- 	frequency = sgs.Skill_Compulsory,
--- 	events = {sgs.EventPhaseStart}, -- 阶段开始时
--- 	on_trigger = function(self,event,player,data)
--- 		local room = player:getRoom()
--- 		local phase = player:getPhase()
--- 		if phase == sgs.Player_Finish then -- 结束阶段
--- 			if player:hasSkill("lolZhanqi") then
--- 				room:detachSkillFromPlayer(player,"lolZhanqi") -- 失去技能
--- 				room:setPlayerMark(player,"@zhanqi",0) --标记清零
--- 			end
--- 		end
--- 	end,
--- }
-
--- Anjiang:addSkill(lolZhanqi)
--- Anjiang:addSkill(lolZhanqiclear)
-
--- lolDilieCard = sgs.CreateSkillCard{
--- 	name = "lolDilieCard",
--- 	target_fixed = false,
--- 	will_throw = true,
--- 	filter = function(self,targets,to_select)
--- 		return to_select:getKingdom() == "shu" -- 必须是“蜀”角色
--- 	end,
--- 	on_use = function(self,room,source,targets)
--- 		local room = source:getRoom() 
--- 		for _,p in ipairs(targets) do
--- 			room:acquireSkill(p,"lolZhanqi") -- 加战旗技能
--- 			room:acquireSkill(p,"#lolZhanqiclear") -- 加战旗清除技
--- 			p:gainMark("@zhanqi") -- 加战旗标记
--- 		end
--- 	end,
--- }
-
--- lolDilie = sgs.CreateOneCardViewAsSkill{
--- 	name = "lolDilie",
--- 	filter_pattern = "BasicCard,EquipCard|red", -- 红色装备或基本牌
--- 	view_as = function(self,card)
--- 		local dilie_card = lolDilieCard:clone()
--- 		dilie_card:addSubcard(card:getId())
--- 		dilie_card:setSkillName("lolDilie")
--- 		return dilie_card
--- 	end,
--- 	enabled_at_play = function(self,player)
--- 		-- 可以弃牌，没有用过此技能卡
--- 		return player:canDiscard(player,"he") and not player:hasUsed("#lolDilieCard")
--- 	end
--- }
-
--- lolTianbeng = sgs.CreateTriggerSkill{
--- 	name = "lolTianbeng$", -- 主公技
--- 	frequency = sgs.Skill_Wake, -- 觉醒技
--- 	events = {sgs.EventPhaseStart}, --阶段开始
--- 	on_trigger = function(self,event,player,data)
--- 		local room = player:getRoom()
--- 		local can_invoke = false
--- 		local kingdoms = 0
--- 		for _,p in sgs.qlist(room:getAlivePlayers()) do -- 获取场上蜀势力角色数
--- 			if p:getKingdom() == "shu" then
--- 				kingdoms = kingdoms + 1
--- 			end
--- 		end
--- 		if kingdoms == 1 and player:getKingdom() == "shu" then -- 如果就我一个是蜀势力
--- 			can_invoke = true
--- 		end
--- 		if can_invoke and player:isLord() then -- 如果我是主公
--- 			room:broadcastSkillInvoke(self:objectName())
--- 			room:doSuperLightbox("JarvanIV","lolTianbeng")
--- 			room:addPlayerMark(player,"lolTianbeng") -- 获得标记
--- 			room:addPlayerMark(player,"@waked") -- 觉醒
--- 			room:acquireSkill(player,"wushuang") -- 获得无双
--- 		end
--- 	end,
--- 	can_trigger = function(self,target)
--- 		return target and (target:getPhase()==sgs.Player_Start) --回合开始
--- 						and target:hasLordSkill("lolTianbeng") -- 有这么个主公技
--- 						and target:isAlive() -- 我还活着
--- 						and (target:getMark("lolTianbeng")==0) -- 还没觉醒
--- 	end
--- }
-
--- JarvanIV:addSkill(lolDilie)
--- JarvanIV:addSkill(lolTianbeng)
 --猴子
 Wukong = sgs.General(extension,"Wukong","qun",4)
 
@@ -968,25 +822,6 @@ Wukong:addSkill(lolWanhua)
 Wukong:addSkill(lolQitian)
 --猪妹
 Sejuani = sgs.General(extension,"Sejuani","qun",4,false)
-
---[[
-lolHanyuCard = sgs.CreateSkillCard{
-	name = "lolHanyuCard",
-	target_fixed = false,
-	filter = function(self,targets,to_select)
-		if to_select:objectName() == sgs.Self:objectName() then return false end
-		if to_select:isAllNude() then return false end
-		return #targets == 0
-	end,
-	on_use = function(self,room,source,targets)
-		local target = targets[1]
-		if source:isAlive() and target:isAlive() and source:canDiscard(target,"hej") then
-			local card_id = room:askForCardChosen(source,target,"hej",self:objectName())
-			room:throwCard(card_id,target,source)
-		end
-	end,
-}
-]]--
 
 lolHanyu = sgs.CreateViewAsSkill{
 	name = "lolHanyu",
@@ -1649,46 +1484,7 @@ lolSuodi = sgs.CreateTriggerSkill{
 		return target
 	end
 }
---[[
-lolChaozaiCard = sgs.CreateSkillCard{
-	name = "lolChaozaiCard",	
-	target_fixed = true,	 
-	will_throw = false,
-	handling_method = sgs.Card_MethodNone,
-	filter = function(self,targets,to_select,player)
-		
-	end,
-	on_use = function(self,room,source,targets)		
-		if source:isKongcheng() then return false end
-		local cards = source:getCards("h")
-		
-		source:throwAllHandCardsAndEquips()
-		for _,c in ipairs(cards) do
-			if c:isRed() then
-				source:gainMark("HeavyRain")
-			end
-		end
-	end,
-	on_effect = function(self,effect)
-		
-	end,	
-}
 
-lolChaozai = sgs.CreateZeroCardViewAsSkill{
-	name = "lolChaozai",
-	relate_to_place = deputy,	
-	response_pattern = "",		
-	view_as = function(self)
-		return lolChaozaiCard
-	end,
-	enabled_at_play = function(self,player)
-		return not player:hasUsed("#lolChaozaiCard")
-	end,
-	enabled_at_response = function(self,player,pattern)
-		
-	end,		
-}
-]]--
 lolChaozai = sgs.CreateTriggerSkill{
 	name = "lolChaozai",	
 	frequeny = sgs.Skill_NotFrequent, 
@@ -1945,7 +1741,7 @@ lolNZhengyi = sgs.CreateViewAsSkill{
 	end,		
 }
 
-lolGarenR = Rset("GarenR","@Garen_R")
+lolGarenR = getRMark("@Garen_R")
 
 newGaren:addSkill(lolnewJianren)
 newGaren:addSkill(lolnewJianrenPasstive)
@@ -2278,7 +2074,7 @@ lolFengzhan = sgs.CreateTriggerSkill{
 	end
 }
 
-lolYasuoR = Rset("lolYasuoR","@YasuoR")
+lolYasuoR = getRMark("@YasuoR")
 
 Yasuo:addSkill(lolLangke)
 Yasuo:addSkill(lolFengzhan)
@@ -2632,7 +2428,7 @@ lolNMingxiang = sgs.CreateViewAsSkill{
 	end,	
 }
 
-lolnewYiR = Rset("lolnweYiR","@YiR")
+lolnewYiR = getRMark("@YiR")
 
 newYi:addSkill(lolNWuji)
 newYi:addSkill(lolNWujiplus)
@@ -2647,7 +2443,7 @@ lolSDilieCard = sgs.CreateSkillCard{
 	will_throw = true,
 	--handling_method = sgs.Card_MethodNone,
 	filter = function(self,targets,to_select,player)
-		if sgs.Self:hasLordSkill(lolNTianbeng) then
+		if player:hasLordSkill("lolNTianbeng") then
 			return to_select:getKingdom() == "shu"
 		else
 			return to_select:hasSkill("lolNDilie")
@@ -2671,7 +2467,7 @@ lolMDilieCard = sgs.CreateSkillCard{
 	will_throw = true,
 	--handling_method = sgs.Card_MethodNone,
 	filter = function(self,targets,to_select,player)
-		if sgs.Self:hasLordSkill(lolNTianbeng) then
+		if player:hasLordSkill("lolNTianbeng") then
 			return to_select:getKingdom() == "shu"
 		else
 			return to_select:hasSkill("lolNDilie")
@@ -2698,7 +2494,7 @@ lolBWDilieCard = sgs.CreateSkillCard{
 	will_throw = true,
 	--handling_method = sgs.Card_MethodNone,
 	filter = function(self,targets,to_select,player)
-		if sgs.Self:hasLordSkill(lolNTianbeng) then
+		if player:hasLordSkill("lolNTianbeng") then
 			return to_select:getKingdom() == "shu"
 		else
 			return to_select:hasSkill("lolNDilie")
@@ -2730,7 +2526,7 @@ lolBADilieCard = sgs.CreateSkillCard{
 	will_throw = true,
 	--handling_method = sgs.Card_MethodNone,
 	filter = function(self,targets,to_select,player)
-		if sgs.Self:hasLordSkill(lolNTianbeng) then
+		if player:hasLordSkill("lolNTianbeng") then
 			return to_select:getKingdom() == "shu"
 		else
 			return to_select:hasSkill("lolNDilie")
@@ -2759,9 +2555,9 @@ lolNDilie = sgs.CreateViewAsSkill{
 	n = 1,
 	view_filter = function(self,selected,to_select)
 		if #selected == 0 then
-			if to_select:isRed() then
-				return to_select:isKindOf("BasicCard")
-			elseif to_select:isBlack() then
+			if to_select:isKindOf("BasicCard") then
+				return to_select:isRed()
+			else
 				return to_select:isKindOf("EquipCard")
 			end
 		end
@@ -2816,7 +2612,9 @@ lolNDilieClear = sgs.CreateTriggerSkill{
 	on_trigger = function(self,event,player,data)
 		local room = player:getRoom()
 		if player:getPhase() == sgs.Player_Finish then
-			room:setPlayerMark(player,"@zhanqi",0)
+			if player:getMark("@zhanqi")>0 then
+				room:setPlayerMark(player,"@zhanqi",0)
+			end
 			if player:hasSkill("wushuang") then
 				room:detachSkillFromPlayer(player,"wushuang")
 			end
@@ -2829,7 +2627,7 @@ lolNDilieClear = sgs.CreateTriggerSkill{
 		end
 	end,	
 	can_trigger = function(self,target)
-		return target:getMark("@zhanqi")>0
+		return target
 	end
 }	
 
@@ -2892,7 +2690,7 @@ lolShugen = sgs.CreateTriggerSkill{
 
 Maokai:addSkill(lolShugen)
 
--- loldrawTime = timeEnd("loldrawTime")
+-- loldrawTime = endRemoveMark("loldrawTime")
 
 newTryndamere = sgs.General(extension,"newTryndamere","shu",4)
 
@@ -2931,17 +2729,10 @@ lolNNurenPassive = sgs.CreateTriggerSkill{
 	on_trigger = function(self,event,player,data)
 		local room = player:getRoom()
 		local use = data:toCardUse()
-		local me = room:findPlayerBySkillName(self:objectName())
-		if use.from and use.from:objectName() == me:objectName() and use.card:isKindOf("Slash") then
-			room:setPlayerMark(me,"angerClear",0)
-			room:setPlayerFlag(me,"anger")
-			if me:getMark("@anger")<4 then
-				room:broadcastSkillInvoke("lolNNuren")
-				me:gainMark("@anger")
-			end
-			local count = me:getMark("@anger")
+		if use.from and use.from:objectName() == player:objectName() and use.card:isKindOf("Slash") then
+			local count = player:getMark("@anger")
 			local judge = sgs.JudgeStruct()
-			judge.who = me
+			judge.who = player
 			judge.good = true
 			judge.reason = self:objectName()
 			if count == 1 then
@@ -2964,25 +2755,7 @@ lolNNurenPassive = sgs.CreateTriggerSkill{
 	end,	
 }
 
-lolNNurenClear = sgs.CreateTriggerSkill{
-	name = "#lolNNurenClear",	
-	frequeny = sgs.Skill_Compulsory, 
-	events = {sgs.EventPhaseEnd},
-	--view_as_skill = ,
-	on_trigger = function(self,event,player,data)
-		local room = player:getRoom()
-		if player:getPhase() == sgs.Player_Finish then
-			if player:hasFlag("anger") then
-				return false
-			end
-			room:addPlayerMark(player,"angerClear")
-			if player:getMark("angerClear") >= 2 and player:getMark("@anger")>0 then
-				player:loseMark("@anger")
-				room:setPlayerMark(player,"angerClear",1)
-			end
-		end
-	end,	
-}
+lolGetAnger,lolLostAnger = SlashedMarkPassive("@anger",2,4)
 
 lolBumie = sgs.CreateTriggerSkill{
 	name = "lolBumie",	
@@ -3018,14 +2791,15 @@ lolBumie = sgs.CreateTriggerSkill{
 	end
 }
 
-lolTryndamereR = Rset("lolTryndamereR","@TryndamereR")
-lolBumieTime = timeEnd("lolBumieTime")
+lolTryndamereR = getRMark("@TryndamereR")
+lolBumieTime = endRemoveMark("lolBumieTime")
 
 -- newTryndamere:addSkill(lolDraw)
 --ewTryndamere:addSkill(loldrawTime)
 newTryndamere:addSkill(lolNNuren)
 newTryndamere:addSkill(lolNNurenPassive)
-newTryndamere:addSkill(lolNNurenClear)
+newTryndamere:addSkill(lolGetAnger)
+newTryndamere:addSkill(lolLostAnger)
 newTryndamere:addSkill(lolBaoJi)
 newTryndamere:addSkill(lolBumie)
 newTryndamere:addSkill(lolTryndamereR)
@@ -3033,45 +2807,7 @@ newTryndamere:addSkill(lolBumieTime)
 
 Renekton = sgs.General(extension,"Renekton","wu",4) --鳄霸
 
-lolBaoJunPassive = sgs.CreateTriggerSkill{
-	name = "#lolBaoJunPassive",	
-	frequeny = sgs.Skill_Compulsory, 
-	events = {sgs.CardUsed},
-	--view_as_skill = ,
-	on_trigger = function(self,event,player,data)
-		local room = player:getRoom()
-		local use = data:toCardUse()
-		if use.from:objectName() == player:objectName() then
-			if use.card:isKindOf("Slash") then
-				room:setPlayerMark(player,"violentClear",0)
-				room:setPlayerFlag(player,"violent")
-				if player:getMark("@violent") < 4 then
-					player:gainMark("@violent")
-				end
-			end
-		end	
-	end,	
-}
-
-lolBaoJunClear = sgs.CreateTriggerSkill{
-	name = "#lolBaoJunClear",	
-	frequeny = sgs.Skill_Compulsory, 
-	events = {sgs.EventPhaseEnd},
-	--view_as_skill = ,
-	on_trigger = function(self,event,player,data)
-		local room = player:getRoom()
-		if player:getPhase() == sgs.Player_Finish then
-			if player:hasFlag("violent") then
-				return false
-			end
-			room:addPlayerMark(player,"violentClear")
-			if player:getMark("violentClear") >= 2 and player:getMark("@violent")>0 then
-				player:loseMark("@violent")
-				room:setPlayerMark(player,"violentClear",1)
-			end
-		end
-	end,	
-}
+lolGetViolent,lolLostViolent = SlashedMarkPassive("@violent",2,4)
 
 lolBaoJunSlash = sgs.CreateTriggerSkill{
 	name = "#lolBaoJunSlash",
@@ -3085,7 +2821,7 @@ lolBaoJunSlash = sgs.CreateTriggerSkill{
 			if damage.card and damage.card:isKindOf("Slash") then
 				if player:getMark("@violent")>=2 then
 					if player:askForSkillInvoke(self:objectName(),data) then
-						damage.to:turnOver()
+						damage.to:gainMark("@JinGu")
 						player:loseMark("@violent",2)
 						room:broadcastSkillInvoke("lolBaoJun")
 					end
@@ -3172,7 +2908,7 @@ lolTongzhiCard = sgs.CreateSkillCard{
 	on_use = function(self,room,source,targets)		
 		room:setPlayerMark(source,"lolTongzhiTime",3)
 		source:gainMark("@violent")
-		source:loseMark("@RenektonR")
+		room:setPlayerMark(source,"@RenektonR",0)
 		room:setPlayerMark(source,"violentClear",0)
 		room:broadcastSkillInvoke("lolTongzhi")
 	end,
@@ -3206,80 +2942,19 @@ lolTongzhiPlus = sgs.CreateTriggerSkill{
 	end,	
 }
 
-lolTongzhiTime = timeEnd("lolTongzhiTime")
+lolTongzhiTime = endRemoveMark("lolTongzhiTime")
 
-lolRenektonR = Rset("lolRenektonR","@RenektonR")
+lolRenektonR = getRMark("@RenektonR")
 
+Renekton:addSkill(lolGetViolent)
+Renekton:addSkill(lolLostViolent)
 Renekton:addSkill(lolBaoJun)
-Renekton:addSkill(lolBaoJunPassive)
-Renekton:addSkill(lolBaoJunClear)
 Renekton:addSkill(lolBaoJunSlash)
-Renekton:addSkill(lolBaoJunPassive)
 Renekton:addSkill(lolTongzhiTime)
 Renekton:addSkill(lolTongzhiPlus)
 Renekton:addSkill(lolTongzhi)
 Renekton:addSkill(lolRenektonR)
-
-Xreath = sgs.General(extension,"Xreath","wei",9)
-
-lolXuanfaCard = sgs.CreateSkillCard{
-	name = "lolXuanfaCard",	
-	target_fixed = false,	 
-	will_throw = false,
-	--handling_method = sgs.Card_MethodNone,
-	filter = function(self,targets,to_select,player)
-		if #targets == 0 then
-			return true
-		end
-	end,
-	on_use = function(self,room,source,targets)		
-		targets[1]:gainMark("TouYun")
-	end,
-	on_effect = function(self,effect)
-		
-	end,	
-}
-
-lolXuanfa = sgs.CreateZeroCardViewAsSkill{
-	name = "lolXuanfa",
-	--relate_to_place = deputy,	
-	--response_pattern = "",		
-	view_as = function(self)
-		return lolXuanfaCard:clone()
-	end,
-	enabled_at_play = function(self,player)
-		return true
-	end,
-	enabled_at_response = function(self,player,pattern)
-		
-	end,		
-}
-
-Xreath:addSkill(lolXuanfa)
-Xreath:addSkill(lolDizzy)
-
---祭品效果
-oblation = function(room,player,tp)
-	local obL = 0
-	if tp == 2 then
-		obL = 4
-	elseif tp == 3 then
-		obL = 6
-	elseif tp == 1 then
-		obL = 2
-	end
-	local count =0
-	while(count<obL and not player:isNude()) do
-		local id = room:askForCardChosen(player,player,"he","oblation")
-		local card = sgs.Sanguosha:getCard(id)
-		if card:isKindOf("EquipCard") then
-			count = count+2
-		else
-			count = count+1
-		end
-		room:throwCard(card,player)
-	end
-end
+Renekton:addSkill(lolImprison)
 
 skill_list = sgs.SkillList()
 ------------------------装备区---------------------------
@@ -3321,6 +2996,15 @@ sgs.LoadTranslationTable{
 	["lol"] = "英雄联盟包",
 	["@Dun"] = "护盾",
 	["@MoDun"] = "魔法护盾",
+	["@XuanYun"] = "眩晕",
+	["@JinGu"] = "禁锢",
+
+	["lolGiveArmor"] = "给甲",
+	["lolDamage"] = "伤害",
+	["lolRecover"] = "回复",
+	["lolThrow"] = "弃牌",
+	["lolDraw"] = "摸牌",
+
 	["newGaren"] = "盖伦",
 	["&newGaren"] = "盖伦",
 	["#newGaren"] = "德玛西亚之力",
@@ -3399,7 +3083,7 @@ sgs.LoadTranslationTable{
 	["cv:newJarvanIV"] = "Miss Baidu",
 	["illustrator:newJarvanIV"] = "Riot",
 	["lolNDilie"] = "地裂",
-	[":lolNDilie"] = "出牌阶段，你可弃置一张红色基本牌或黑色武器牌，本回合你可额外使用一张【杀】，若你弃置的是装备牌，你额外获得技能“无双”“马术”以及穿甲效果直至回合结束，若你弃置的是武器牌，可弃置一名角色一张牌，若你弃置的是防具牌，你获得一枚“护盾”。每回合限一次",
+	[":lolNDilie"] = "出牌阶段，你可弃置一张红色基本牌或装备牌，本回合你可额外使用一张【杀】，若你弃置的是装备牌，你额外获得技能“无双”“马术”以及穿甲效果直至回合结束，若你弃置的是武器牌，可弃置一名角色一张牌，若你弃置的是防具牌，你获得一枚“护盾”。每回合限一次",
 	["$lolNDilie"] = "犯我德邦者，虽远必诛！",
 	["@zhanqi"] = "战旗",
 	["lolNTianbeng"] = "天崩",
@@ -3607,7 +3291,7 @@ sgs.LoadTranslationTable{
 	["cv:Renekton"] = "Miss Baidu",
 	["illustrator:Renekton"] = "Riot",
 	["lolBaoJun"] = "暴君",
-	[":lolBaoJun"] = "被动）你使用【杀】时，获得一枚“残暴”标记，最多4枚。你每有连续的两个回合未使用【杀】，你失去一枚“残暴”标记。当你的【杀】造成伤害时，若你至少拥有两枚“残暴”，你可失两枚“残暴”标记，令目标角色翻面。（主动）若你的“残暴”标记不足两枚，且你装备有武器牌，你可弃置此牌，每有1名角色与你距离为1，你摸一张牌（最多两张）。若你的“残暴”值不小于2，你可失去两枚“残暴”标记，对一名攻击范围内可以被【杀】指定的角色造成1点【杀】的伤害。每回合限发动一次主动效果。",
+	[":lolBaoJun"] = "被动）你使用【杀】时，获得一枚“残暴”标记，最多4枚。你每有连续的两个回合未使用【杀】，你失去一枚“残暴”标记。当你的【杀】造成伤害时，若你至少拥有两枚“残暴”，你可失两枚“残暴”标记，“禁锢”该角色。（主动）若你的“残暴”标记不足两枚，且你装备有武器牌，你可弃置此牌，每有1名角色与你距离为1，你摸一张牌（最多两张）。若你的“残暴”值不小于2，你可失去两枚“残暴”标记，对一名攻击范围内可以被【杀】指定的角色造成1点【杀】的伤害。每回合限发动一次主动效果。",
 	["#lolBaoJunSlash"] = "暴君",
 	["lolTongzhi"] = "统治",
 	[":lolTongzhi"] = "限定技，出牌阶段，你可令包括本回合在内的3个回合里，每个回合开始时你获得一枚“残暴”标记（本回合发动时立即获得）。此期间你不会因为被动失去“残暴”标记。",
@@ -3624,30 +3308,6 @@ sgs.LoadTranslationTable{
 	[":lolMingfu"] = "限定技，你可指定一名没有“冥府”技能的角色，令其失去所有技能，获得技能“冥府”",
 	["lolXingxiang"] = "星象",
 	[":lolXingxiang"] = "回合开始阶段，你可观看排队顶X张牌（X为场上拥有“冥府”技能的角色）",
-
-	["Shiren"] = "简拉基茨德",
-	["&Shiren"] = "简拉基茨德",
-	["#Shiren"] = "吟游诗人",
-	["designer:Shiren"] = "Wargon",
-	["cv:Shiren"] = "Miss Baidu",
-	["illustrator:Shiren"] = "Riot",
-	["lolYinyou"] = "吟游",
-	[":lolYinyou"] = "出牌阶段，你可选择一种花色，然后进行一次判定，若花色相同，你获得摸一张牌；如果判定结果为红色，你可摸一张牌。每回合限一次。",
-	["lolPiaobo"] = "漂泊",
-	[":lolPiaobo"] = "出牌阶段，你可指定一名角色，令其选择是否交给你一张手牌，若如此做，你可发动一次”吟游“。每回合限生效一次，每回合每名角色限一次。",
-
-	["ChengShuling"] = "程书林",
-	["&ChengShuling"] = "程书林",
-	["#ChengShuling"] = "面筋哥",
-	["designer:ChengShuling"] = "Wargon",
-	["cv:ChengShuling"] = "Miss Baidu",
-	["illustrator:ChengShuling"] = "Riot",
-	["lolTianlai"] = "天籁",
-	[":lolTianlai"] = "出牌阶段开始时，你可跳过本回合，令其他在你攻击范围内的角色失去1点体力",
-	["lolMianJing"] = "面筋",
-	[":lolMianJing"] = "出牌阶段，你可弃置一张装备牌，令一名角色回复一点体力，每回合限一次",
-
-
 
 }
 	
