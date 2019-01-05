@@ -6,7 +6,7 @@ extension = sgs.Package("fate")
 Anjiang = sgs.General(extension,"anjiang","god",4,true,true,true)
 
 --请先看lol拓展包
-Rset = function(Rname,Rmark)
+getRMark = function(Rname, Rmark)
 	lolR = sgs.CreateTriggerSkill{
 		name = "#"..Rname,	
 		frequeny = sgs.Skill_Frequent, 
@@ -35,22 +35,67 @@ getBaojuCard = function(baoju)
 	return zaigetcard
 end
 
---函数返回获取宝具的视为技，需要配合上面的返回获得宝具技能卡使用
---(字符串)baoju 和上述一样的一样，
---(技能卡对象)baojucard 这个技能卡就是要视为的技能卡
-getBaoju = function(baoju,baojucard)
-	zaiGet = sgs.CreateZeroCardViewAsSkill{
-		name = "zai"..baoju,
+-- --函数返回获取宝具的视为技，需要配合上面的返回获得宝具技能卡使用
+-- --(字符串)baoju 和上述一样的一样，
+-- --(技能卡对象)baojucard 这个技能卡就是要视为的技能卡
+-- getBaoju = function(baoju,baojucard)
+-- 	zaiGet = sgs.CreateZeroCardViewAsSkill{
+-- 		name = "zai"..baoju,
+-- 		view_as = function(self)
+-- 			local vs_card = baojucard:clone()
+-- 			vs_card:setSkillName(self:objectName())
+-- 			return vs_card
+-- 		end,
+-- 		enabled_at_play = function(self,player)
+-- 			return not player:hasUsed("#zai"..baoju.."Card")
+-- 		end,
+-- 	}
+-- 	return zaiGet
+-- end
+
+removeCardStr = function(card)
+	local name = card:objectName()
+	if name:find("Card") then
+		name = string.sub(name,1,-5)
+	end
+	return name
+end
+
+--返回每回合限制一次的零牌视为技
+--	(技能卡对象)skillcard, 视为的技能卡
+ZeroOnceTimeVS = function(skillcard)
+	local Name = removeCardStr(skillcard)
+	VSskill = sgs.CreateZeroCardViewAsSkill{
+		name = Name,
 		view_as = function(self)
-			local vs_card = baojucard:clone()
-			vs_card:setSkillName(self:objectName())
-			return vs_card
+			local vs = skillcard:clone()
+			vs:setSkillName(self:objectName())
+			return vs
 		end,
 		enabled_at_play = function(self,player)
-			return not player:hasUsed("#zai"..baoju.."Card")
-		end,
+			return not player:hasUsed("#"..skillcard:objectName())
+		end,	
 	}
-	return zaiGet
+	return VSskill
+end
+
+--返回大招视为技能
+--	(技能卡对象)skillcard, 视为的技能卡
+--	(string)Rmark, 大招所需的标记
+ZeroRVS = function(skillcard, Rmark)
+	local Name = removeCardStr(skillcard)
+	VSskill = sgs.CreateZeroCardViewAsSkill{
+		name = Name,
+		view_as = function(self)
+			local vs = skillcard:clone()
+			vs:setSkillName(self:objectName())
+			return vs
+		end,
+		enabled_at_play = function(self,player)
+			return player:getMark(Rmark) > 0
+		end,	
+	}
+	return VSskill
 end
 
 -------------------------全局---------------------------------
@@ -68,7 +113,7 @@ Saber = sgs.General(extension,"Saber","wei",4,false)
 
 zaiExcaliburCard = getBaojuCard("Excalibur")
 
-zaiExcalibur = getBaoju("Excalibur",zaiExcaliburCard)
+zaiExcalibur = ZeroOnceTimeVS(zaiExcaliburCard)
 
 zaiAvalon = sgs.CreateTriggerSkill{
 	name = "#zaiAvalon",
@@ -91,7 +136,7 @@ zaiAvalon = sgs.CreateTriggerSkill{
 				room:recover(player,recover)
 			end
 		elseif event == sgs.EventPhaseChanging then
-			player:setMark("excalibur",0)
+			room:setPlayerMark(player,"excalibur",0)
 		end
 	end,
 }
@@ -139,24 +184,9 @@ zaiGaeBolgCard = sgs.CreateSkillCard{
 	end,	
 }
 
-zaiGaeBolg = sgs.CreateZeroCardViewAsSkill{
-	name = "zaiGaeBolg",
-	--relate_to_place = deputy,	
-	--response_pattern = "",		
-	view_as = function(self)
-		local vs = zaiGaeBolgCard:clone() 
-		vs:setSkillName(self:objectName())
-		return vs
-	end,
-	enabled_at_play = function(self,player)
-		return not player:hasUsed("#zaiGaeBolgCard")
-	end,
-	enabled_at_response = function(self,player,pattern)
-		
-	end,		
-}
+zaiGaeBolg = ZeroOnceTimeVS(zaiGaeBolgCard)
 
-zaiKuqiulinR = Rset("KuqiulinR","KuqiulinR")
+zaiKuqiulinR = getRMark("KuqiulinR","KuqiulinR")
 
 Kuqiulin:addSkill(zaiGaeBolg)
 Kuqiulin:addSkill(zaiKuqiulinR)
@@ -217,8 +247,6 @@ zaiBoGCard = sgs.CreateSkillCard{
 
 zaiBoG = sgs.CreateViewAsSkill{
 	name = "zaiBoG",
-	--relate_to_place = deputy,	
-	--response_pattern = "",
 	n = 1,
 	view_filter = function(self,selected,to_select)
 		if #selected == 0 then
@@ -242,93 +270,6 @@ zaiBoG = sgs.CreateViewAsSkill{
 		
 	end,		
 }
-
--- zaiBoG = sgs.CreateZeroCardViewAsSkill{
--- 	name = "zaiBoG",
--- 	--relate_to_place = deputy,	
--- 	--response_pattern = "",		
--- 	view_as = function(self)
--- 		return zaiBoGCard:clone()
--- 	end,
--- 	enabled_at_play = function(self,player)
--- 		return not player:hasUsed("#zaiBoGCard")
--- 	end,
--- 	enabled_at_response = function(self,player,pattern)
-		
--- 	end,		
--- }
-
--- WangkuCard = function(baoju)
--- 	zaiWangkuCard = sgs.CreateSkillCard{
--- 		name = "zai"..baoju.."Card",
--- 		target_fixed = false,
--- 		will_throw = true,
--- 		filter = function(self,targets,to_select,player)
--- 			if #targets == 0 then
--- 				return to_select:objectName() ~= player:objectName()
--- 			end
--- 		end,
--- 		on_use = function(self,room,source,targets)		
--- 			local damage = sgs.DamageStruct()
--- 			damage.from = source
--- 			damage.to = targets[1]
--- 			damage.damage = 1
--- 			room:damage(damage)
--- 			source:loseMark(baoju)
--- 		end,
--- 	}
--- 	return zaiWangkuCard
--- end
--- --BoG = {"Enuma","Enkidu","Durandal","Dainslef","Gram","Caladbolg","Vajra","Harpe"}
--- zaiEnkiduCard = WangkuCard(BoG[2])
--- zaiDurandalCard = WangkuCard(BoG[3])
--- zaiDainslefCard = WangkuCard(BoG[4])
--- zaiGramCard = WangkuCard(BoG[5])
--- zaiCaladbolgCard = WangkuCard(BoG[6])
--- zaiVajraCard = WangkuCard(BoG[7])
--- zaiHarpeCard = WangkuCard(BoG[8])
-
--- zaiWangku = sgs.CreateViewAsSkill{
--- 	name = "zaiWangku",
--- 	--relate_to_place = deputy,	
--- 	--response_pattern = "",
--- 	n = 1,
--- 	view_filter = function(self,selected,to_select)
--- 		if #selected == 0 then
--- 			return sgs.Self:getMark(to_select:objectName()) > 0 and to_select:objectName() ~= "Enuma"
--- 		end
--- 	end,
--- 	view_as = function(self,cards)
--- 		if #cards == 0 then
--- 			return nil
--- 		end
--- 		if #cards == 1 then
--- 			local card = cards[1]
--- 			local to_copy = nil
--- 			if card:objectName() == BoG[2] then
--- 				to_copy = zaiEnkiduCard:clone()
--- 			elseif card:objectName() == BoG[3] then
--- 				to_copy = zaiDurandalCard:clone()
--- 			elseif card:objectName() == BoG[4] then
--- 				to_copy = zaiDainslefCard:clone()
--- 			elseif card:objectName() == BoG[5] then
--- 				to_copy = zaiGramCard:clone()
--- 			elseif card:objectName() == BoG[6] then
--- 				to_copy = zaiCaladbolgCard:clone()
--- 			elseif card:objectName() == BoG[7] then
--- 				to_copy = zaiVajraCard:clone()
--- 			elseif card:objectName() == BoG[8] then
--- 				to_copy = zaiHarpeCard:clone()
--- 			end
--- 			to_copy:addSubcard(card)
--- 			to_copy:setSkillName(self:objectName())
--- 			return to_copy
--- 		end
--- 	end,
--- 	enabled_at_play = function(self,player)
--- 		return not player:hasUsed("#zaiWangkuCard")
--- 	end,
--- }
 
 Jier:addSkill(zaiBoG)
 Jier:addSkill(zaiBoGStart)
@@ -513,26 +454,6 @@ skill_list:append(EnkiduSkill)
 -- 		local triggerskill = sgs.Sanguosha:getTriggerSkill(self:objectName())
 -- 		room:getThread():addTriggerSkill(triggerskill)
 -- 	end,
--- }
-
--- VimanaSkill = sgs.CreateTriggerSkill{
--- 	name = "Vimana",	
--- 	frequeny = sgs.Skill_Compulsory, 
--- 	events = {sgs.EventPhaseEnd},
--- 	on_trigger = function(self,event,player,data)
--- 		local room = player:getRoom()
--- 		if player:getPhase() == sgs.Player_Finish then
--- 			local hand = player:getHandcardNum()
--- 			if hand<4 then
--- 				if player:askForSkillInvoke(self:objectName(),data) then
--- 					player:drawCards(4-hand)
--- 				end
--- 			end
--- 		end
--- 	end,	
--- 	can_trigger = function(self,target)
--- 		return target and target:hasWeapon(self:objectName())
--- 	end
 -- }
 
 -- skill_list:append(VimanaSkill)
