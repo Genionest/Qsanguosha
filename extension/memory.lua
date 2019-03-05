@@ -384,10 +384,132 @@ youlongming = sgs.CreateTriggerSkill{
 youlongyihong:addSkill(youtianjian)
 youlongyihong:addSkill(youlongming)
 
+maomao = sgs.General(extension, "maomao", "qun", 4)
 
+yousutong = sgs.CreateTriggerSkill{
+	name = "yousutong",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.DamageCaused},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local me = room:findPlayerBySkillName(self:objectName())
+		local damage = data:toDamage()
+		if damage.from and (damage.from:objectName() == me:objectName() or
+		 damage.to:objectName() == me:objectName() ) then
+			local hp = damage.to:getHp()
+			local new_damage = hp
+			damage.damage = hp
+			data:setValue(damage)
+		end
+	end,
+	can_trigger = function(self,target)
+			return target
+	end	
+}
 
+maomao:addSkill(yousutong)
 
+kkv = sgs.General(extension, "kkv", "qun", 6)
 
+youfanche = sgs.CreateTriggerSkill{
+	name = "youfanche",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.DamageCaused},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local damage = data:toDamage()
+		if damage.from and damage.from:objectName() == player:objectName() then
+			if damage.to:getHp() <= damage.damage then
+				local judge = sgs.JudgeStruct()
+				judge.who = player
+				judge.pattern = ".|red"
+				judge.reason = self:objectName()
+				judge.good = true
+				room:judge(judge)
+				if judge:isBad() then
+					return true
+				end
+			end
+		end
+	end,	
+}
+
+kkv:addSkill(youfanche)
+
+aochangzhang = sgs.General(extension, "aochangzhang", "god", 4)
+
+yougemen = sgs.CreateTriggerSkill{
+	name = "yougemen",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.DrawNCards},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local count = 0
+		for _, target in sgs.qlist(room:getAlivePlayers()) do
+			if target:getKingdom() == player:getKingdom() then
+				count = count + 1
+			end
+		end
+		count = count + data:toInt()
+		data:setValue(count)
+	end,	
+}
+
+yougemen2 = sgs.CreateMaxCardsSkill{
+	name = "#yougemen2",
+	extra_func = function(self,player)
+		if player:hasSkill(self:objectName()) then
+			local targets = player:getAliveSiblings()
+			local count = 1
+			for _, target in sgs.qlist(targets) do
+				if target:getKingdom() == player:getKingdom() then
+					count = count + 1
+				end
+			end
+			return count
+		end
+	end
+}
+
+aochangzhang:addSkill(yougemen)
+aochangzhang:addSkill(yougemen2)
+
+yangweitao = sgs.General(extension, "yangweitao", "shu", 3)
+
+youcusi = sgs.CreateTriggerSkill{
+	name = "youcusi",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.EventPhaseEnd, sgs.HpChanged},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if event == sgs.EventPhaseEnd then
+			if player:getPhaseString() == "start" then
+				local judge = sgs.JudgeStruct()
+				judge.who = player
+				judge.pattern = ".|spade|2,3,4,5,6,7|."
+				judge.reason = self:objectName()
+				judge.good = false
+				room:judge(judge)
+				player:speak("1")
+				if judge:isBad() then
+					player:speak("2")
+					room:killPlayer(player)
+				end
+			end
+		elseif event == sgs.HpChanged then
+			if player:getHp() <= 0 then
+				local hp = sgs.QVariant(1)
+				room:setPlayerProperty(player, "hp", hp)
+			end
+		end
+	end,
+}
+
+yangweitao:addSkill(youcusi)
 
 
 
@@ -467,4 +589,40 @@ sgs.LoadTranslationTable{
 	[":youtianjian"] = "出牌阶段，你可将方块牌当【杀】使用，黑桃牌当【过河拆桥】使用；回合外，你可将方块牌当【闪】使用，黑桃牌当【无懈可击】使用。",
 	["youlongming"] = "龙鸣",
 	[":youlongming"] = "当你造成属性伤害时，你可令受伤角色损失一点体力上限。",
+
+	["maomao"] = "毛毛",
+	["&maomao"] = "毛毛",
+	["#maomao"] = "速通之王",
+	["designer:maomao"] = "Wargon",
+	["cv:maomao"] = "Miss Baidu",
+	["illustrator:maomao"] = "",
+	["yousutong"] = "速通",
+	[":yousutong"] = "你造成或受到伤害时，伤害值等于受伤角色的体力值。",
+
+	["kkv"] = "KKV",
+	["&kkv"] = "KKV",
+	["#kkv"] = "翻车王",
+	["designer:kkv"] = "Wargon",
+	["cv:kkv"] = "Miss Baidu",
+	["illustrator:kkv"] = "",
+	["youfanche"] = "翻车",
+	[":youfanche"] = "你对一名角色造成致命伤害时，你进行一次判定，若结果为黑色，你将不造成此伤害。",
+
+	["aochangzhang"] = "敖缘凤",
+	["&aochangzhang"] = "敖缘凤",
+	["#aochangzhang"] = "敖厂长",
+	["designer:aochangzhang"] = "Wargon",
+	["cv:aochangzhang"] = "Miss Baidu",
+	["illustrator:aochangzhang"] = "",
+	["yougemen"] = "哥们",
+	[":yougemen"] = "摸牌阶段，场上每存活一名与你相同势力的角色，你便多摸一张牌，你的手牌上限便+1。",
+
+	["yangweitao"] = "杨伟涛",
+	["&yangweitao"] = "杨伟涛",
+	["#yangweitao"] = "死肥宅",
+	["designer:yangweitao"] = "Wargon",
+	["cv:yangweitao"] = "Miss Baidu",
+	["illustrator:yangweitao"] = "",
+	["youcusi"] = "猝死",
+	[":youcusi"] = "回合开始时，你进行一次判定，若结果为黑桃2-7，你直接死亡；当你的体力值减少到0或更低时，你的体力值变为1。",
 }
