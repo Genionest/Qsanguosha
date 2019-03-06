@@ -511,6 +511,25 @@ youcusi = sgs.CreateTriggerSkill{
 
 yangweitao:addSkill(youcusi)
 
+zhognyong = sgs.General(extension, "zhongyong", "wei", 4)
+
+shandongcard = sgs.CreateSkillCard{
+	name = "shangdongcard",	
+	target_fixed = true,	 
+	will_throw = false,
+	-- handling_method = sgs.Card_MethodNone,
+	on_use = function(self,room,source,targets)		
+		if targets[1]:canSlash(targets[2]) then
+		end
+	end,
+	on_effect = function(self,effect)
+		
+	end,	
+}
+
+
+
+
 
 
 
