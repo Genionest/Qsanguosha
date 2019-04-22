@@ -346,7 +346,7 @@ lolChangeCard = sgs.CreateSkillCard{
 		end
 	end,
 	on_use = function(self,room,source,targets)
-		room:changeHero(targets[1], "guider", true)
+		room:changeHero(targets[1], "Azir", true)
 	end,
 }	
 
@@ -739,14 +739,8 @@ lolZongshiPlus = sgs.CreateTargetModSkill{
 	name = "#lolZongshiPlus",
 	frequency = sgs.Skill_NotFrequent,
 	pattern = "Slash",	
-	distance_limit_func = function(self,player,card)
-		
-	end,
 	residue_func = function(self,player)
 		return player:getMark("zongshi")
-	end,
-	extra_target_func = function(self,player)
-		
 	end,
 }
 
@@ -1163,7 +1157,95 @@ Udyr_bear:addSkill(lolSiling)
 Udyr_Phoenix:addSkill(lolSiling)
 Udyr:addSkill(lolSiling)
 
--- Azir = sgs.General(extension,"Azir$","shu",3)
+Azir = sgs.General(extension,"Azir$","shu",3)
+
+lolShabingCard = sgs.CreateSkillCard{
+	name = "lolShabingCard",
+	target_fixed = true,	 
+	will_throw = true,
+	-- handling_method = sgs.Card_MethodNone,
+	filter = function(self,targets,to_select,player)
+		return true
+	end,
+	on_use = function(self,room,source,targets)	
+		local id = room:askForCardChosen(source, source, "h", self:objectName())
+		source:addToPile("solder", id)
+	end,
+}
+
+lolShabing = sgs.CreateZeroCardViewAsSkill{
+	name = "lolShabing",		
+	view_as = function(self)
+		local vs = lolShabingCard:clone()
+		vs:setSkillName(self:objectName())
+		return vs
+	end,
+	enabled_at_play = function(self,player)
+		return player:getPile("solder"):length() == 0		
+	end,
+}
+
+lolShabingPassive = sgs.CreateTriggerSkill{
+	name = "#lolShabingPassive",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.EventPhaseEnd},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if player:getPhaseString() == "finish" then
+			local handlist = player:getHandcards()
+			local pilelist = player:getPile("solder")
+			if handlist:length() > 0 then
+				for _, hand in sgs.qlist(handlist) do
+					player:addToPile("solder", hand, false)
+				end
+			end
+			if pilelist:length() then
+				for _, pile in sgs.qlist(pilelist) do
+					room:obtainCard(player, pile, false)
+				end
+			end
+			if player:getMark("@Tree") == 0 then  -- 第一个回合，没有标记
+				room:setPlayerMark(player, "@Tree", 1)
+				player:gainAnExtraTurn()
+			else
+				room:setPlayerMark(player, "@Tree", 0)
+			end
+		end
+	end,	
+}
+
+lolShabingMax = sgs.CreateMaxCardsSkill{
+	name = "#lolShabingMax",
+	extra_func = function(self,player)
+		-- 手牌上限是跟血量挂钩的
+		local num = player:getHp()
+		if player:getMark("@Tree")>0 then
+			return 1 - num
+		end
+	end
+}
+
+lolFuxing = sgs.CreateMaxCardsSkill{
+	name = "lolFuxing",
+	extra_func = function(self,player)
+		local count = 0
+		local targets = player:getAliveSiblings()
+		for _, target in sgs.qlist(targets) do
+			if target:getKingdom() == "shu" then
+				count = count + 1
+			end
+		end
+		if player:getMark("@Tree")>0 and player:isLord() then
+			return count
+		end
+	end
+}
+
+Azir:addSkill(lolShabing)
+Azir:addSkill(lolShabingPassive)
+Azir:addSkill(lolShabingMax)
+Azir:addSkill(lolFuxing)
 
 -- lolJingeCard = sgs.CreateSkillCard{
 -- 	name = "lolJingeCard",	
@@ -1311,7 +1393,6 @@ lolSuodi = sgs.CreateTriggerSkill{
 				end
 			end
 		end
-		
 	end,
 	can_trigger = function(self, target)
 		return target
@@ -2655,74 +2736,6 @@ lolBaoJun = sgs.CreateTriggerSkill{
 	end,	
 }	
 
--- lolBaoJunCard = sgs.CreateSkillCard{
--- 	name = "lolBaoJunCard",
--- 	target_fixed = false,
--- 	will_throw = true,
--- 	--handling_method = sgs.Card_MethodNone,
--- 	filter = function(self,targets,to_select,player)
--- 		if player:getMark("@violent")<2 then
--- 			if #targets == 0 then
--- 				return to_select:hasSkill("lolBaoJun")
--- 			end
--- 		elseif player:getMark("@violent")>= 2 then
--- 			if #targets == 0 then
--- 				return player:canSlash(to_select,nil,true)
--- 			end
--- 		end
--- 	end,
--- 	on_use = function(self,room,source,targets)		
--- 		if source:getMark("@violent")<2 then
--- 			local card = source:getWeapon()
--- 			room:throwCard(card,source,source)	
--- 			local players = room:getOtherPlayers(source)
--- 			local count = 0
--- 			for _,p in sgs.qlist(players) do
--- 				if p:isAlive() and source:distanceTo(p) == 1 then
--- 					count = count + 1
--- 				end
--- 			end
--- 			room:broadcastSkillInvoke("lolBaoJun")
--- 			count = math.min(count,2)
--- 			source:drawCards(count)
--- 		elseif source:getMark("@violent")>= 2 then
--- 			source:loseMark("@violent",2)
--- 			local recover = sgs.RecoverStruct()
--- 			recover.who = source
--- 			recover.recover = 1
--- 			room:recover(source,recover)
--- 			for _,t in ipairs(targets) do
--- 				local damage = sgs.DamageStruct()
--- 				damage.from = source
--- 				damage.damage = 1
--- 				damage.card = sgs.Sanguosha:cloneCard("slash",sgs.Card_NoSuit,0)
--- 				damage.to = t
--- 				room:damage(damage)
--- 				room:broadcastSkillInvoke("lolBaoJun")
--- 			end
--- 		end
--- 	end,	
--- }
-
--- lolBaoJun = sgs.CreateZeroCardViewAsSkill{
--- 	name = "lolBaoJun",
--- 	--relate_to_place = deputy,	
--- 	--response_pattern = "",		
--- 	view_as = function(self)
--- 		return lolBaoJunCard:clone()
--- 	end,
--- 	enabled_at_play = function(self,player)
--- 		if not player:hasUsed("#lolBaoJunCard") then
--- 			if player:getMark("@violent")<2 then
--- 				return player:getWeapon()
--- 			elseif player:getMark("@violent")>=2 then
--- 				return true
--- 			end
--- 		end
--- 	end,	
--- }
-
-
 lolTongzhiCard = sgs.CreateSkillCard{
 	name = "lolTongzhiCard",	
 	target_fixed = true,	 
@@ -2818,6 +2831,7 @@ lolZhenhun = sgs.CreateTriggerSkill{
 
 Karthus:addSkill(lolZhenhun)
 
+----------------------名测试将-----------------------------------
 Test = sgs.General(extension, "test", "wei", 8)
 
 lolxinxi = 	sgs.CreateTriggerSkill{
@@ -3127,18 +3141,17 @@ sgs.LoadTranslationTable{
 	["$lolBumie"] = "我是你最可怕的噩梦",
 	["@TryndamereR"] = "无尽怒火",
 
+	["solder"] = "兵",
 	["Azir"] = "阿兹尔",
 	["&Azir"] = "阿兹尔",
 	["#Azir"] = "沙漠皇帝",
 	["designer:Azir"] = "Wargon",
 	["cv:Azir"] = "Miss Baidu",
 	["illustrator:Azir"] = "Riot",
-	["lolJinge"] = "金戈",
-	[":lolJinge"] = "出牌阶段限一次，你可交给在你攻击范围内的一名角色一张【杀】，其选择一项：1.使用一张【杀】；2.你获得其一张手牌",
-	["lolTiema"] = "铁马",
-	[":lolTiema"] = "当你受到伤害时，可以摸X张牌（X为你当前已损失的体力值）",
+	["lolShabing"] = "沙兵",
+	[":lolShabing"] = "出牌阶段，若你武将牌上没有牌，你可将一张手牌置于武将牌上，称为“兵”，回合结束时，你将手牌和“兵”互换；你的回合结束时，额外进行一个回合（此回合你的手牌上限为1）",
 	["lolFuxing"] = "复兴",
-	[":lolFuxing"] = "主公技，其他蜀势力角色回合结束时，你进行一个额外的回合",
+	[":lolFuxing"] = "主公技，你在“沙兵”的额外回合里，场上每存活一个其他蜀势力角色，你的手牌上限便+1",
 
 	["HeavyRain"] = "暴雨",
 	["Kaisa"] = "卡莎",
