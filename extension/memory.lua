@@ -1,3 +1,21 @@
+	Skip to content
+ 
+Search or jump to…
+
+Pull requests
+Issues
+Marketplace
+Explore
+ 
+@Genionest 
+0
+0 0 Genionest/Qsanguosha
+ Code  Issues 0  Pull requests 0  Projects 0  Wiki  Insights  Settings
+Qsanguosha/extension/memory.lua
+@Genionest Genionest 增加新武将
+be8969f on 7 Mar
+647 lines (575 sloc)  19.1 KB
+    
 module("extensions.memory",package.seeall)
 
 extension = sgs.Package("memory")
@@ -490,13 +508,11 @@ youcusi = sgs.CreateTriggerSkill{
 			if player:getPhaseString() == "start" then
 				local judge = sgs.JudgeStruct()
 				judge.who = player
-				judge.pattern = ".|spade|2,3,4,5,6,7|."
+				judge.pattern = ".|spade|2,3,4,5,6,7,8,9|."
 				judge.reason = self:objectName()
 				judge.good = false
 				room:judge(judge)
-				player:speak("1")
 				if judge:isBad() then
-					player:speak("2")
 					room:killPlayer(player)
 				end
 			end
@@ -510,26 +526,6 @@ youcusi = sgs.CreateTriggerSkill{
 }
 
 yangweitao:addSkill(youcusi)
-
-zhognyong = sgs.General(extension, "zhongyong", "wei", 4)
-
-shandongcard = sgs.CreateSkillCard{
-	name = "shangdongcard",	
-	target_fixed = true,	 
-	will_throw = false,
-	-- handling_method = sgs.Card_MethodNone,
-	on_use = function(self,room,source,targets)		
-		if targets[1]:canSlash(targets[2]) then
-		end
-	end,
-	on_effect = function(self,effect)
-		
-	end,	
-}
-
-
-
-
 
 
 
@@ -643,5 +639,5 @@ sgs.LoadTranslationTable{
 	["cv:yangweitao"] = "Miss Baidu",
 	["illustrator:yangweitao"] = "",
 	["youcusi"] = "猝死",
-	[":youcusi"] = "回合开始时，你进行一次判定，若结果为黑桃2-7，你直接死亡；当你的体力值减少到0或更低时，你的体力值变为1。",
+	[":youcusi"] = "回合开始时，你进行一次判定，若结果为黑桃2-9，你直接死亡；当你的体力值减少到0或更低时，你的体力值变为1。",
 }
