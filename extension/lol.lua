@@ -716,7 +716,7 @@ Soroka:addSkill(lolQidao)
 --武器
 Jax = sgs.General(extension,"Jax","qun",4)
 
-lolZongshi= sgs.CreateTriggerSkill{
+lolZongshi = sgs.CreateTriggerSkill{
 	name = "lolZongshi",	
 	frequeny = sgs.Skill_Compulsory, 
 	events = {sgs.DamageCaused},
@@ -1139,17 +1139,45 @@ lolSiling = sgs.CreateTriggerSkill{
 				-- 依据相应的花色变成相应形态的乌迪尔
 				if suit == sgs.Card_Spade then
 					room:changeHero(player,"Udyr_tiger",false,false,false,false)
+					room:broadcastSkillInvoke("lolUtiger")
 				elseif suit == sgs.Card_Heart then
 					room:changeHero(player,"Udyr_turtle",false,false,false,false)
+					room:broadcastSkillInvoke("lolUturtle")
 				elseif suit == sgs.Card_Club then
 					room:changeHero(player,"Udyr_bear",false,false,false,false)
+					room:broadcastSkillInvoke("lolUbear")
 				elseif suit == sgs.Card_Diamond then
 					room:changeHero(player,"Udyr_Phoenix",false,false,false,false)
+					room:broadcastSkillInvoke("lolUphoenix")
 				end
 			end
 		end
 	end,
 }
+
+--音效技能
+siling = function(skill_name)
+	local lolskill = sgs.CreateTriggerSkill{
+		name = skill_name,	
+		frequeny = sgs.Skill_Frequent, 
+		events = {sgs.EventPhaseEnd},
+		-- view_as_skill = ,
+		on_trigger = function(self,event,player,data)
+			local room = player:getRoom()
+		end,
+	}
+	return lolskill
+end
+
+lolUtiger = siling("lolUtiger")
+lolUturtle = siling("lolUturtle")
+lolUbear = siling("lolUbear")
+lolUphoenix = siling("lolUphoenix")
+
+Anjiang:addSkill(lolUphoenix)
+Anjiang:addSkill(lolUbear)
+Anjiang:addSkill(lolUtiger)
+Anjiang:addSkill(lolUturtle)
 
 Udyr_tiger:addSkill(lolSiling)
 Udyr_turtle:addSkill(lolSiling)
@@ -1205,11 +1233,11 @@ lolShabingPassive = sgs.CreateTriggerSkill{
 					room:obtainCard(player, pile, false)
 				end
 			end
-			if player:getMark("@Tree") == 0 then  -- 第一个回合，没有标记
-				room:setPlayerMark(player, "@Tree", 1)
+			if player:getMark("@solder") == 0 then  -- 第一个回合，没有标记
+				room:setPlayerMark(player, "@solder", 1)
 				player:gainAnExtraTurn()
 			else
-				room:setPlayerMark(player, "@Tree", 0)
+				room:setPlayerMark(player, "@solder", 0)
 			end
 		end
 	end,	
@@ -1220,7 +1248,7 @@ lolShabingMax = sgs.CreateMaxCardsSkill{
 	extra_func = function(self,player)
 		-- 手牌上限是跟血量挂钩的
 		local num = player:getHp()
-		if player:getMark("@Tree")>0 then
+		if player:getMark("@solder")>0 then
 			return 1 - num
 		end
 	end
@@ -1236,7 +1264,7 @@ lolFuxing = sgs.CreateMaxCardsSkill{
 				count = count + 1
 			end
 		end
-		if player:getMark("@Tree")>0 and player:isLord() then
+		if player:getMark("@solder")>0 and player:isLord() then
 			return count
 		end
 	end
@@ -1654,10 +1682,11 @@ Shiyu = sgs.General(extension,"Shiyu","qun",3,false,true,true)
 Meizhiliu = sgs.General(extension,"Meizhiliu","qun",3,false,true,true)
 
 Jiatenghui:addSkill("luoshen")
-Jiatenghui:addSkill("hongyan")
+Jiatenghui:addSkill("qingguo")
 Yinglili:addSkill("xiaoji")
 Yinglili:addSkill("zhenlie")
 Shiyu:addSkill("biyue")
+Shiyu:addSkill("")
 Meizhiliu:addSkill("shenxian")
 Meizhiliu:addSkill("nosqicai")
 
@@ -2831,41 +2860,140 @@ lolZhenhun = sgs.CreateTriggerSkill{
 
 Karthus:addSkill(lolZhenhun)
 
-----------------------名测试将-----------------------------------
-Test = sgs.General(extension, "test", "wei", 8)
+Graves = sgs.General(extension, "Graves", "wei", 3)
 
-lolxinxi = 	sgs.CreateTriggerSkill{
-	name = "lolxinxi",	
+lolMolu = sgs.CreateTargetModSkill{
+	name = "lolMolu",
+	frequency = sgs.Skill_NotFrequent,
+	pattern = "Slash",	
+	extra_target_func = function(self,player)
+		if player:getHandcardNum() <= 1 and player:hasSkill(self:objectName()) then
+			return 2
+		end
+	end,
+}
+
+lolQiongtuCard = sgs.CreateSkillCard{
+	name = "lolQiongtuCard",	
+	target_fixed = true,	 
+	will_throw = true,
+	filter = function(self,targets,to_select,player)
+		return true
+	end,
+	on_use = function(self,room,source,targets)		
+		room:setPlayerFlag(source, "lolQiongtu")
+	end,
+}
+
+lolSQiongtuCard = sgs.CreateSkillCard{
+	name = "lolSQiongtuCard",	
+	target_fixed = true,	 
+	will_throw = true,
+	filter = function(self,targets,to_select,player)
+		return true
+	end,
+	on_use = function(self,room,source,targets)		
+		room:setPlayerFlag(source, "lolSQiongtu")		
+	end,
+}
+
+lolQiongtu = sgs.CreateViewAsSkill{
+	name = "lolQiongtu",	
+	n = 2,
+	view_filter = function(self,selected,to_select)
+		return #selected < 2 and not to_select:isEquipped()
+	end,
+	view_as = function(self,cards)
+		if #cards == 1 then
+			local vs = lolSQiongtuCard:clone()
+			vs:addSubcard(cards[1])
+			vs:setSkillName(self:objectName())
+			return vs
+		elseif #cards == 2 then
+			local vs = lolQiongtuCard:clone()
+			vs:addSubcard(cards[1])
+			vs:addSubcard(cards[2])
+			vs:setSkillName(self:objectName())
+			return vs
+		end
+	end,
+	enabled_at_play = function(self,player)
+		return not player:hasUsed("#lolQiongtuCard") or player:hasUsed("#lolSQiongtuCard")
+	end,	
+}
+
+lolQiongtuPassive = sgs.CreateTriggerSkill{
+	name = "#lolQiongtuPassive",	
 	frequeny = sgs.Skill_Frequent, 
-	events = {sgs.EventPhaseStart},
+	events = {sgs.EventPhaseEnd},
 	-- view_as_skill = ,
 	on_trigger = function(self,event,player,data)
 		local room = player:getRoom()
-		local players = room:getAlivePlayers()
-		local frends = sgs.SPlayerList()
-		local tos = {}
-		for _,p in sgs.qlist(players) do
-			if p then
-				frends:append(p)
-				table.insert(tos, p:getGeneralName())
-			end
-		end
-		if frends:length() > 0 then
-			local sunfrom = player
-			local toss = table.concat(tos)
-			local prompt = string.format("invoke:"..sunfrom:getGeneralName())
-			if player:getPhaseString() == "start" then
-				if player:askForSkillInvoke(self:objectName(), sgs.QVariant(prompt)) then
-					player:speak(sunfrom:objectName())
-				end
+		if player:getPhaseString() == "finish" then
+			if player:hasFlag("lolQiongtu") then
+				player:drawCards(2)
+			elseif player:hasFlag("lolSQiongtu") then
+				player:drawCards(1)
 			end
 		end
 	end,	
 }
 
+Graves:addSkill(lolMolu)
+Graves:addSkill(lolQiongtu)
+Graves:addSkill(lolQiongtuPassive)
+
+----------------------名测试将-----------------------------------
+Test = sgs.General(extension, "test", "wei", 8)
+
+-- lolxinxi = 	sgs.CreateTriggerSkill{
+-- 	name = "lolxinxi",	
+-- 	frequeny = sgs.Skill_Frequent, 
+-- 	events = {sgs.EventPhaseStart},
+-- 	-- view_as_skill = ,
+-- 	on_trigger = function(self,event,player,data)
+-- 		local room = player:getRoom()
+-- 		local players = room:getAlivePlayers()
+-- 		local frends = sgs.SPlayerList()
+-- 		local tos = {}
+-- 		for _,p in sgs.qlist(players) do
+-- 			if p then
+-- 				frends:append(p)
+-- 				table.insert(tos, p:getGeneralName())
+-- 			end
+-- 		end
+-- 		if frends:length() > 0 then
+-- 			local sunfrom = player
+-- 			local toss = table.concat(tos)
+-- 			local prompt = string.format("invoke:"..sunfrom:getGeneralName())
+-- 			if player:getPhaseString() == "start" then
+-- 				if player:askForSkillInvoke(self:objectName(), sgs.QVariant(prompt)) then
+-- 					player:speak(sunfrom:objectName())
+-- 				end
+-- 			end
+-- 		end
+-- 	end,	
+-- }
+
+shishi = sgs.CreateTriggerSkill{
+	name = "shishi",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.EventPhaseStart},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local kingdom_set = {}
+		for _, p in sgs.qlist(room:getAlivePlayers()) do
+			table.insert(kingdom_set, p:getKingdom())
+		end
+		local n = #kingdom_set
+		player:speak(tostring(n))
+	end,	
+}
+
+-- Test:addSkill(shishi)
 Test:addSkill(lolGM)
 -- Test:addSkill(lolxinxi)
-
 skill_list = sgs.SkillList()
 
 
@@ -3258,7 +3386,7 @@ sgs.LoadTranslationTable{
 	["cv:Renekton"] = "Miss Baidu",
 	["illustrator:Renekton"] = "Riot",
 	["lolBaoJun"] = "暴君",
-	[":lolBaoJun"] = "被动）你使用【杀】时，获得一枚“残暴”标记，最多4枚。你每有连续的两个回合未获得“残暴”标记，你失去一枚“残暴”标记。当你的【杀】造成伤害时，若你至少拥有两枚“残暴”，你可失两枚“残暴”标记，令该角色翻面，若此时你只有1点体力，你回复1点体力。",
+	[":lolBaoJun"] = "被动）你使用【杀】时，获得一枚“残暴”标记，最多4枚。你每有连续的两个回合未获得“残暴”标记，你失去一枚“残暴”标记。当你的【杀】造成伤害时，若你至少拥有两枚“残暴”，你可失两枚“残暴”标记，令该角色翻面，若此时你体力值不大于2，你回复1点体力。",
 	["$lolBaoJun"] = "所有人，都得死",
 	["#lolBaoJunSlash"] = "暴君",
 	["lolTongzhi"] = "统治",
@@ -3305,4 +3433,17 @@ sgs.LoadTranslationTable{
 	["lolJinlile"] = "尽梨了",
 	[":lolJinlile"] = "游戏开始时，你随机获得1-4次机会，每次可以从4个路人女主中获得其一项技能",
 	["$lolJinlile"] = "我的毒刺不会让你失望的",
+
+	["Graves"] = "格雷福斯",
+	["&Graves"] = "格雷福斯",
+	["#Graves"] = "法外狂徒",
+	["designer:Graves"] = "Wargon",
+	["cv:Graves"] = "Miss Baidu",
+	["illustrator:Graves"] = "Riot",
+	["lolMolu"] = "末路",
+	[":lolMolu"] = "若你使用的【杀】是你的最后一张手牌，此【杀】可额外指定2名角色",
+	["$lolMolu"] = "",
+	["lolQiongtu"] = "穷途",
+	[":lolQiongtu"] = "出牌阶段，你可弃置至多两张手牌，则回合结束时，你摸等同于你以此法弃置的牌数。每回合限一次",
+	["$lolQiongtu"] = "",
 }
