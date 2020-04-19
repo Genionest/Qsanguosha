@@ -13,9 +13,11 @@ removeAt = function(name)
 	return name
 end
 
+-- 移除card名字末尾的Card/card
+-- (Card)card, 需要获取名字的card
 removeCardStr = function(card)
 	local name = card:objectName()
-	if name:find("Card") then
+	if name:find("Card") or name:find("card") then
 		name = string.sub(name,1,-5)
 	end
 	return name
@@ -2942,6 +2944,114 @@ lolQiongtuPassive = sgs.CreateTriggerSkill{
 Graves:addSkill(lolMolu)
 Graves:addSkill(lolQiongtu)
 Graves:addSkill(lolQiongtuPassive)
+
+Jayce = sgs.General(extension, "Jayce", "wei", 3)
+
+loljayce_k = sgs.CreateTriggerSkill{
+	name = "loljayce_k",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.EventPhaseStart},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if player:getPhaseString() == "start" then
+			if player:askForSkillInvoke(self:objectName(), data) then
+				local targets = room:getOtherPlayers(player)
+				local target = room:askForPlayerChosen(player, targets, self:objectName())
+				local choice = room:askForChoice(player, self:objectName(), "draw+discard")
+				local hp = player:getHp()
+				if choice == "draw" then
+					target:drawCards(hp)
+					room:askForDiscard(target, self:objectName(), 1, 1)
+				else
+					target:drawCards(1)
+					room:askForDiscard(target, self:objectName(), hp, hp)
+				end
+			end
+		end
+	end,	
+}
+
+loljayce_k2_card = sgs.CreateSkillCard{
+	name = "loljayce_k2_card",	
+	target_fixed = false,	 
+	will_throw = false,
+	handling_method = sgs.Card_MethodNone,
+	filter = function(self,targets,to_select,player)
+		return #targets == 0 
+		and to_select:objectName() ~= player:objectName()
+		and not to_select:isKongcheng()
+		and not player:isKongcheng()
+	end,
+	on_use = function(self,room,source,targets)
+		local player = source
+		local target = targets[1]
+		local success = player:pindian(target, self:objectName(), nil)
+		if success then
+			player:drawCards(2)
+		end
+	end,	
+}
+
+loljayce_k2 = sgs.CreateZeroCardViewAsSkill{
+	name = "loljayce_k2",
+	-- relate_to_place = deputy,	
+	-- response_pattern = "",		
+	view_as = function(self)
+		local vs = loljayce_k2_card:clone()
+		vs:setSkillName(self:objectName())
+		return vs
+	end,
+	enabled_at_play = function(self,player)
+		return not player:hasUsed("#loljayce_k2_card")
+	end,	
+}
+
+Anjiang:addSkill(loljayce_k)
+Anjiang:addSkill(loljayce_k2)
+
+loljayce_s = sgs.CreateTriggerSkill{
+	name = "loljayce_s",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.EventPhaseStart},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if player:getPhaseString() == "start" then
+			if player:askForSkillInvoke(self:objectName(), data) then
+				player:gainMark("@loljayce_p1")
+				room:handleAcquireDetachSkills(player, "loljayce_k|nosyingzi|jiang")
+			else
+				player:gainMark("@loljayce_p2")
+				room:handleAcquireDetachSkills(player, "loljayce_k2")
+			end
+		end
+	end,	
+}	
+
+loljayce_s2 = sgs.CreateTriggerSkill{
+	name = "loljayce_s2",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.EventPhaseStart},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if player:getPhaseString() == "finish" then
+			if player:getMark("@loljayce_p1") then
+				player:loseMark("@loljayce_p1")
+				room:detachSkillFromPlayer(player, "loljayce_k")
+				room:detachSkillFromPlayer(player, "nosyingzi")
+				room:detachSkillFromPlayer(player, "jiang")
+			else
+				player:loseMark("@loljayce_p2")
+				room:detachSkillFromPlayer(player, "loljayce_k2")
+			end
+		end
+	end,	
+}
+
+Jayce:addSkill(loljayce_s)
+Jayce:addSkill(loljayce_s2)
 
 ----------------------名测试将-----------------------------------
 Test = sgs.General(extension, "test", "wei", 8)
