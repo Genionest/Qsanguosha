@@ -23,6 +23,14 @@ removeCardStr = function(card)
 	return name
 end
 
+-- 体力上限-1
+local function changeMaxHp(player, room, num)
+	local mhp = sgs.QVariant()
+	local count = player:getMaxHp()
+	mhp:setValue(count+num)
+	room:setPlayerProperty( player,"maxhp",mhp)
+end
+
 --你只需为武将添加这个函数返回的技能，游戏开始时他就会为你的武将返回一个Rmark所代表的标记
 --ex：lolWujinagR = getRMark("@WujiangR")
 --    Wujiang:addSkill(lolWujiangR)
@@ -464,7 +472,9 @@ lolChuanJia = sgs.CreateTriggerSkill{
 		local room = player:getRoom()
 		if event == sgs.TargetConfirmed then
 			local use = data:toCardUse()
-			if use.card and use.card:isKindOf("Slash") then
+			if use.card and use.card:isKindOf("Slash")
+			and (use.card:hasFlag("ChuanJia")
+			or use.from:getMark("ChuanJia")>0) then
 				if use.from:hasSkill(self:objectName()) then
 					local targets = use.to
 					for _,t in sgs.qlist(targets) do
@@ -500,6 +510,29 @@ lolBaoJi = sgs.CreateTriggerSkill{
 			end
 		end
 	end,	
+}
+
+-- 强杀，你的【杀】有"QiangSha"flag和这个技能，就能强制造成伤害
+lolQiangSha = sgs.CreateTriggerSkill{
+	name = "lolQiangSha",	
+	frequeny = sgs.Skill_Compulsory, 
+	events = {sgs.TargetConfirmed} ,
+	on_trigger = function(self, event, player, data)
+		local use = data:toCardUse()
+		if use.from:objectName() == player:objectName() 
+		and use.card:hasFlag("QiangSha") then
+			local jink_table = sgs.QList2Table(player:getTag("Jink_" .. use.card:toString()):toIntList())
+			local index = 1
+			for _, p in sgs.qlist(use.to) do
+				jink_table[index] = 0
+				index = index + 1
+			end
+			local jink_data = sgs.QVariant()
+			jink_data:setValue(Table2IntList(jink_table))
+			player:setTag("Jink_" .. use.card:toString(), jink_data)
+			return false
+		end
+	end
 }
 
 --
@@ -705,7 +738,7 @@ lolQidao = sgs.CreateTriggerSkill{
 				local recover = sgs.RecoverStruct()
 				recover.who = player
 				room:recover(player,recover)
-				room:setPlayerFlag(self:objectName())
+				room:setPlayerFlag(player, self:objectName())
 				room:broadcastSkillInvoke(self:objectName())
 			end
 		end
@@ -2962,10 +2995,12 @@ loljayce_k = sgs.CreateTriggerSkill{
 				local hp = player:getHp()
 				if choice == "draw" then
 					target:drawCards(hp)
-					room:askForDiscard(target, self:objectName(), 1, 1)
+					room:askForDiscard(target, self:objectName(), 1, 1, false, true)
+					player:speak("穿过加速之门")
 				else
 					target:drawCards(1)
-					room:askForDiscard(target, self:objectName(), hp, hp)
+					room:askForDiscard(target, self:objectName(), hp, hp, false, true)
+					player:speak("面对雷霆吧")
 				end
 			end
 		end
@@ -2989,6 +3024,7 @@ loljayce_k2_card = sgs.CreateSkillCard{
 		local success = player:pindian(target, self:objectName(), nil)
 		if success then
 			player:drawCards(2)
+			player:speak("充能完毕")
 		end
 	end,	
 }
@@ -3020,10 +3056,13 @@ loljayce_s = sgs.CreateTriggerSkill{
 		if player:getPhaseString() == "start" then
 			if player:askForSkillInvoke(self:objectName(), data) then
 				player:gainMark("@loljayce_p1")
+				room:askForDiscard(player, self:objectName(), 2, 2)
 				room:handleAcquireDetachSkills(player, "loljayce_k|nosyingzi|jiang")
+				player:speak("墨丘利之炮")
 			else
 				player:gainMark("@loljayce_p2")
 				room:handleAcquireDetachSkills(player, "loljayce_k2")
+				player:speak("墨丘利之锤")
 			end
 		end
 	end,	
@@ -3053,37 +3092,529 @@ loljayce_s2 = sgs.CreateTriggerSkill{
 Jayce:addSkill(loljayce_s)
 Jayce:addSkill(loljayce_s2)
 
+Vladimir2 = sgs.General(extension, "Vladimir2", "wei", 4)
+
+lolvladimir_k = sgs.CreateTriggerSkill{
+	name = "lolvladimir_k",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.EventPhaseStart},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if player:getPhaseString() == "start" then
+			if player:getMark("@lolvladimir_p")>0 then
+				player:loseMark("@lolvladimir_p")
+				player:speak("瘟疫结束了")
+			end
+			if player:getMark("@lolvladimir_q") > 0 then
+				if player:askForSkillInvoke(self:objectName(),data) then
+					player:loseMark("@lolvladimir_q")
+					player:gainMark("@lolvladimir_p")
+					player:speak("血之瘟疫")
+				end
+			end
+		end
+	end,	
+}
+
+lolvladimir_k2 = sgs.CreateTriggerSkill{
+	name = "#lolvladimir_k2",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.Damaged, sgs.HpRecover},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local me = room:findPlayerBySkillName(self:objectName())
+		if me:getMark("@lolvladimir_p")<=0 then return end
+		if event == sgs.Damaged then
+			local damage = data:toDamage()
+			me:drawCards(damage.damage)
+			me:speak("丰收时刻")
+		elseif event == sgs.HpRecover then
+			local recover = data:toRecover()
+			me:drawCards(recover.recover)
+			me:speak("喜悦时刻")
+		end
+	end,
+	can_trigger = function(self,target)
+		return target
+	end	
+}
+
+Anjiang:addSkill(lolvladimir_k)
+Anjiang:addSkill(lolvladimir_k2)
+
+lolvladimir_s = sgs.CreateTriggerSkill{
+	name = "lolvladimir_s",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.Damaged, sgs.HpRecover},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local me = room:findPlayerBySkillName(self:objectName())
+		if event == sgs.Damaged then
+			local damage = data:toDamage()
+			-- if player:objectName() == me:objectName() then
+				player:gainMark("@lolvladimir_q", damage.damage)
+				player:speak("请让鲜血都流出来吧")
+			-- end
+		elseif event == sgs.HpRecover then
+			local recover = data:toRecover()
+			-- if player:objectName() == me:objectName() then
+				player:gainMark("@lolvladimir_q", recover.recover)
+				player:speak("收获之夜")
+			-- end
+		end
+	end,	
+}
+
+lolvladimir_s2 = sgs.CreateTriggerSkill{
+	name = "lolvladimir_s2",	
+	frequeny = sgs.Skill_Waked, 
+	events = {sgs.EventPhaseStart},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if player:getPhaseString() == "start" then
+			if player:getMark("@lolvladimir_q") >= 3
+			and player:getMark("@waked") <= 0 then
+				player:gainMark("@waked")
+				room:handleAcquireDetachSkills(player, "lolvladimir_k|#lolvladimir_k2")
+				player:speak("我的脸色很苍白")
+				changeMaxHp(player, room, -1)
+			end
+		end
+	end,
+}
+
+lolvladimir_s3 = sgs.CreateMaxCardsSkill{
+	name = "#lolvladimir_s3",
+	extra_func = function(self,player)
+		if player:hasSkill(self:objectName()) then
+			local count = player:getMark("@lolvladimir_q")
+			count = math.floor(count/2)
+			return count
+		end
+	end
+}
+
+Vladimir2:addSkill(lolvladimir_s)
+Vladimir2:addSkill(lolvladimir_s2)
+Vladimir2:addSkill(lolvladimir_s3)
+
+Olaf2 = sgs.General(extension, "Olaf2", "wei", 4)
+
+lololaf_s = sgs.CreateTriggerSkill{
+	name = "lololaf_s",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.EventPhaseStart},
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if player:getPhaseString() == "start" then
+			if player:askForSkillInvoke(self:objectName(), data) then
+				room:loseHp(player)
+				player:gainMark("@lololaf_p")
+				player:speak("罗马西亚")
+			end
+		elseif player:getPhaseString() == "finish" then
+			player:loseMark("@lololaf_p")
+		end
+	end,	
+}
+
+lololaf_s2 = sgs.CreateTriggerSkill{
+	name = "#lololaf_s2",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.DrawNCards, sgs.EventPhaseStart},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if player:getMark("@lololaf_p") <= 0 then return end
+		if event == sgs.EventPhaseStart then
+			if player:getPhaseString() == "judge" then
+				local cards = player:getCards("j")
+				for _, card in sgs.qlist(cards) do
+					room:throwCard(card, player, player)
+				end
+				player:speak("诸神黄昏")
+			end
+		elseif event == sgs.DrawNCards then
+			local count = data:toInt()
+			count = count + player:getLostHp()
+			data:setValue(count)
+			player:speak("掠夺吧")
+		end
+	end,	
+}
+
+lololaf_s3 = sgs.CreateTargetModSkill{
+	name = "#lololaf_s3",
+	frequency = sgs.Skill_NotFrequent,
+	pattern = "Slash",	
+	residue_func = function(self,player)
+		return player:getLostHp()
+	end,
+}
+
+Olaf2:addSkill(lololaf_s)
+Olaf2:addSkill(lololaf_s2)
+Olaf2:addSkill(lololaf_s3)
+
+Aatrox = sgs.General(extension, "Aatrox", "wei", 4)
+
+local function Aatrox_fn(player, damage, room)
+	player:drawCards(damage.damage)
+	local recover = sgs.RecoverStruct()
+	recover.who = player
+	recover.recover = damage.damage
+	room:recover(player, recover)
+end
+
+lolaatrox_s = sgs.CreateTriggerSkill{
+	name = "lolaatrox_s",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.Damage},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local damage = data:toDamage()
+		if not player:hasFlag(self:objectName()) then
+			Aatrox_fn(player, damage, room)
+			room:setPlayerFlag(player, self:objectName())
+			player:speak("聆听灭绝的死寂吧")
+		elseif damage.chain then
+			Aatrox_fn(player, damage, room)
+			player:speak("大灭将至")
+		elseif damage.card and (damage.card:isKindOf("ArcheryAttack")
+		or damage.card:isKindOf("SavageAssault")) then
+			Aatrox_fn(player, damage, room)
+			player:speak("毁灭所有")
+		end
+	end,	
+}
+
+Aatrox:addSkill(lolaatrox_s)
+
+Yasuo2 = sgs.General(extension, "Yasuo2", "wei", 3)
+
+local function Yasuo_fn(me, room, self)
+	me:gainMark("@lolyasuo_q")
+	me:speak("中")
+	if (me:getWeapon() and me:getMark("@lolyasuo_q")>=3)
+	or me:getMark("@lolyasuo_q")>=4 then
+		me:loseAllMarks("@lolyasuo_q")
+		local targets = room:getOtherPlayers(me)
+		local target = room:askForPlayerChosen(me, targets, self:objectName())
+		room:askForDiscard(target, self:objectName(), 2, 2)
+		room:setPlayerFlag(me, self:objectName())
+		me:speak("哈撒给")
+	end
+end
+
+local function Yasuo_fn2(me, room)
+	me:gainMark("@lolyasuo_e")
+	me:speak("且随疾风前行")
+	if (me:getArmor() and me:getMark("@lolyasuo_e")>=3)
+	or me:getMark("@lolyasuo_e")>=4 then
+		me:loseAllMarks("@lolyasuo_e")
+		me:drawCards(2)
+		me:speak("6级成就")
+	end
+end
+
+lolyasuo_s = sgs.CreateTriggerSkill{
+	name = "lolyasuo_s",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.CardUsed, sgs.CardResponded, sgs.EventPhaseEnd},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local me = room:findPlayerBySkillName(self:objectName())
+		if event == sgs.CardUsed then
+			local use = data:toCardUse()
+			if use.from and use.from:objectName() == me:objectName() then
+				if me:getPhaseString() ~= "not_active"
+				and not me:hasFlag(self:objectName()) then
+					Yasuo_fn(me, room, self)
+				elseif me:getPhaseString() == "not_active" then
+					Yasuo_fn2(me, room)
+				end
+			end
+		elseif event == sgs.CardResponded then
+			local response = data:toCardResponse()
+			if me:getPhaseString() == "not_active" then
+				Yasuo_fn2(me, room)
+			end
+		elseif event == sgs.EventPhaseEnd then
+			if me:getPhaseString() == "finish" then
+				me:loseAllMarks("@lolyasuo_q")
+				me:speak("此剑之势，愈斩愈烈")
+			end
+		end
+	end,	
+}
+
+Yasuo2:addSkill(lolyasuo_s)
+
+Camille = sgs.General(extension, "Camille", "wei", 4)
+
+lolcamille_s = sgs.CreateTriggerSkill{
+	name = "lolcamille_s",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.CardUsed},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local use = data:toCardUse()
+		if use.card:isKindOf("Slash") and use.from
+		and use.from:objectName() == player:objectName() then
+			if player:askForSkillInvoke(self:objectName(), data) then
+				room:setCardFlag(use.card, "ChuanJia")
+			end
+		end
+	end,	
+}
+
+Camille:addSkill(lolcamille_s)
+Camille:addSkill(lolChuanJia)
+Camille:addSkill("mashu")
+Camille:addSkill(lolGiveArmor)
+
+Mordekaiser = sgs.General(extension, "Mordekaiser", "wei", 4)
+
+lolmordekaiser_s = sgs.CreateTriggerSkill{
+	name = "lolmordekaiser_s",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.CardUsed, sgs.DrawNCards},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if event == sgs.CardUsed then
+			local use = data:toCardUse()
+			if use.from:objectName() == player:objectName()
+			and (use.card:isKindOf("Slash")
+			or use.card:isKindOf("Duel")) then
+				if player:getMark("@lolmordekaiser_p") <= 0 then
+					player:gainMark("@lolmordekaiser_q")
+					player:speak("狂打")
+					if player:getMark("@lolmordekaiser_q") >= 4 then
+						player:loseAllMarks("@lolmordekaiser_q")
+						player:gainMark("@lolmordekaiser_p")
+						player:speak("魂来")
+					end
+				end
+			end
+		elseif event == sgs.DrawNCards then
+			if player:getMark("@lolmordekaiser_p") <= 0 then
+				return
+			end
+			local num = 0
+			local targets = room:getOtherPlayers(player)
+			for _, target in sgs.qlist(targets) do
+				if player:distanceTo(target) <= 1 then
+					num = num + 1
+				end
+			end
+			player:speak("你是听不清我说什么的")
+			local count = data:toInt()
+			data:setValue(count+num)
+		end
+	end,	
+}
+
+Mordekaiser:addSkill(lolmordekaiser_s)
+
+Darius = sgs.General(extension, "Darius", "wei", 4)
+
+loldarius_s = sgs.CreateTriggerSkill{
+	name = "loldarius_s",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.CardUsed},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local use = data:toCardUse()
+		if use.from:objectName() == player:objectName()
+		and use.card:isKindOf("Slash") then
+			if player:getMark("@loldarius_p") <= 0 then
+				player:gainMark("@loldarius_w") 
+				player:speak("无情舔嫂")
+				if player:getMark("@loldarius_w") >= 3 then
+					player:gainMark("@loldarius_p")
+					player:loseAllMarks("@loldarius_w")
+					player:speak("见识下真正的气魄吧")
+				end
+			elseif player:getMark("@loldarius_p") > 0 then
+				room:setCardFlag(use.card, "QiangSha")
+				player:speak("无可匹敌的力量")
+			end
+		end
+	end,
+}
+
+loldarius_s2 = sgs.CreateTriggerSkill{
+	name = "#loldarius_s2",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.Death},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local death = data:toDeath()
+		local me = room:findPlayerBySkillName(self:objectName())
+		if death.who:objectName() ~= me:objectName() then
+			local damage = death.damage
+			if damage.from:objectName() == me:objectName() then
+				if me:getMark("@loldarius_p") <= 0 then
+					me:gainMark("@loldarius_p")
+					me:speak("西内")
+				end
+			end
+		end
+	end,	
+	can_trigger = function(self,target)
+		return target
+	end
+}
+
+loldarius_s3 = sgs.CreateTriggerSkill{
+	name = "#loldarius_s3",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.Damage},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		local damage = data:toDamage()
+		if damage.from:objectName() == player:objectName()
+		and damage.to:objectName() ~= player:objectName()
+		and damage.card and damage.card:isKindOf("Slash") then
+			if player:getMark("@loldarius_p") > 0 then
+				local judge = sgs.JudgeStruct()
+				judge.who = damage.to
+				judge.pattern = ".|heart"
+				judge.reason = "loldarius_s"
+				judge.good = false
+				room:judge(judge)
+				player:speak("站大街")
+				if judge:isBad() then
+					room:loseHp(damage.to)
+					local recover = sgs.RecoverStruct()
+					recover.who = player
+					room:recover(player,recover)
+					player:speak("大淑芬")
+				end
+			end
+		end
+	end,	
+}
+
+Darius:addSkill(loldarius_s)
+Darius:addSkill(loldarius_s2)
+Darius:addSkill(loldarius_s3)
+Darius:addSkill(lolQiangSha)
+
+Zed = sgs.General(extension, "Zed", "wei", 3)
+
+lolzed_s_card = sgs.CreateSkillCard{
+	name = "lolzed_s_card",	
+	target_fixed = false,	 
+	will_throw = false,
+	-- handling_method = sgs.Card_MethodNone,
+	filter = function(self,targets,to_select,player)
+		return #targets == 0
+			and to_select:objectName() ~= player:objectName()
+	end,
+	on_use = function(self,room,source,targets)		
+		local player = source
+		local target = targets[1]
+		player:loseMark("@lolzed_p", 3)
+		local judge = sgs.JudgeStruct()
+		judge.who = target
+		judge.pattern = ".|spade"
+		judge.reason = "lolzed_s"
+		judge.good = true
+		room:judge(judge)
+		if judge:isBad() then
+			local damage = sgs.DamageStruct("lolzed_s",player,target,1)
+			room:damage(damage)
+		end
+	end,
+}
+
+lolzed_s = sgs.CreateZeroCardViewAsSkill{
+	name = "lolzed_s",
+	-- relate_to_place = deputy,	
+	-- response_pattern = "",		
+	view_as = function(self)
+		local vs = lolzed_s_card:clone()
+		vs:setSkillName(self:objectName())
+		return vs
+	end,
+	enabled_at_play = function(self,player)
+		return not player:hasUsed("#lolzed_s_card")
+			and player:getMark("@lolzed_p") >= 3
+	end,
+}
+
+lolzed_s2 = sgs.CreateTriggerSkill{
+	name = "lolzed_s2",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.CardAsked},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if player:getMark("@lolzed_p") >= 2 
+		and player:askForSkillInvoke(self:objectName(), data) then
+			player:loseMark("@lolzed_p", 2)
+			local pattern = data:toStringList()[1]
+			local judge = sgs.JudgeStruct()
+			judge.pattern = ".|club"
+			judge.good = false
+			judge.reason = self:objectName()
+			judge.who = player
+			-- judge.play_animation = true
+			-- room:setEmotion(player, "armor/EightDiagram");
+			room:judge(judge)
+			if judge:isGood() then
+				local jink = sgs.Sanguosha:cloneCard("jink", sgs.Card_NoSuit, 0)
+				jink:setSkillName(self:objectName())
+				room:provide(jink)
+				return true
+			end
+			return false
+		end
+	end	
+}
+
+lolzed_s3 = sgs.CreateGameStartSkill{
+	name = "#lolzed_s3",	
+	frequeny = sgs.Skill_Frequent,	
+	-- view_as_skill = ,
+	on_gamestart = function(self,player)
+		local room = player:getRoom()
+		player:gainMark("@lolzed_p", 4)
+	end,	
+}
+
+lolzed_s4 = sgs.CreateTriggerSkill{
+	name = "#lolzed_s4",	
+	frequeny = sgs.Skill_Frequent, 
+	events = {sgs.DrawNCards},
+	-- view_as_skill = ,
+	on_trigger = function(self,event,player,data)
+		local room = player:getRoom()
+		if player:getMark("@lolzed_p") < 4 then
+			player:gainMark("@lolzed_p")
+		end
+	end,	
+}
+
+Zed:addSkill(lolzed_s)
+Zed:addSkill(lolzed_s2)
+Zed:addSkill(lolzed_s3)
+Zed:addSkill(lolzed_s4)
+
 ----------------------名测试将-----------------------------------
 Test = sgs.General(extension, "test", "wei", 8)
-
--- lolxinxi = 	sgs.CreateTriggerSkill{
--- 	name = "lolxinxi",	
--- 	frequeny = sgs.Skill_Frequent, 
--- 	events = {sgs.EventPhaseStart},
--- 	-- view_as_skill = ,
--- 	on_trigger = function(self,event,player,data)
--- 		local room = player:getRoom()
--- 		local players = room:getAlivePlayers()
--- 		local frends = sgs.SPlayerList()
--- 		local tos = {}
--- 		for _,p in sgs.qlist(players) do
--- 			if p then
--- 				frends:append(p)
--- 				table.insert(tos, p:getGeneralName())
--- 			end
--- 		end
--- 		if frends:length() > 0 then
--- 			local sunfrom = player
--- 			local toss = table.concat(tos)
--- 			local prompt = string.format("invoke:"..sunfrom:getGeneralName())
--- 			if player:getPhaseString() == "start" then
--- 				if player:askForSkillInvoke(self:objectName(), sgs.QVariant(prompt)) then
--- 					player:speak(sunfrom:objectName())
--- 				end
--- 			end
--- 		end
--- 	end,	
--- }
 
 shishi = sgs.CreateTriggerSkill{
 	name = "shishi",	
@@ -3161,6 +3692,8 @@ sgs.LoadTranslationTable{
 	["lolChange"] = "变身",
 	["lolChuanJia"] = "穿甲",
 	[":lolChuanJia"] = "你的【杀】无视防具",
+	["lolQiangSha"] = "强杀",
+	[":lolQiangSha"] = "你的【杀】不可闪避",
 
 	["@Garen_R"] = "德玛西亚正义",
 	["newGaren"] = "盖伦",
